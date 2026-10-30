@@ -38,6 +38,7 @@ export function openAnalyzer(
   panel: HTMLElement,
   puzzle: CarrierPuzzle,
   onResult: (result: LockResult) => void,
+  onTune?: () => void,
 ): void {
   const { signal, bandwidthsHz } = puzzle;
   const samples = generateWaterfall(signal);
@@ -107,7 +108,10 @@ export function openAnalyzer(
     drawSpectrum(spectrum, puzzle, integratedSpectrum(signal, samples, current.driftHzPerSec));
   };
 
-  tune.addEventListener('input', update);
+  tune.addEventListener('input', () => {
+    update();
+    onTune?.();
+  });
   drift.addEventListener('input', update);
   bandwidth.addEventListener('change', update);
   lock.addEventListener('click', () => onResult(evaluateLock(puzzle, samples, settings())));
