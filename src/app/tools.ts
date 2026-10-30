@@ -1,5 +1,6 @@
 import type { GameAudio } from '../audio/audio.ts';
-import type { Content, Episode, Puzzle } from '../content/schema.ts';
+import { evaluate } from '../content/conditions.ts';
+import type { Content, Episode, Puzzle, Transmission } from '../content/schema.ts';
 import type { DialogueSource } from '../narrative/dialogue.ts';
 import type { AttemptResult, Game } from '../puzzle/game.ts';
 import { openDecoder } from '../puzzle/raster-view.ts';
@@ -7,6 +8,7 @@ import { openInquiry } from '../puzzle/inquiry-view.ts';
 import { openAnalyzer } from '../signal/analyzer-view.ts';
 import type { Terminal } from '../terminal/terminal.ts';
 import { openArchive } from '../world/archive-view.ts';
+import { openArtifact } from '../world/artifact-view.ts';
 import { mapNodes, type MapNode } from '../world/map.ts';
 import { openMap } from '../world/map-view.ts';
 import { openCodePanel } from '../world/sector-view.ts';
@@ -90,6 +92,12 @@ function puzzleTool(context: ToolContext, puzzle: Puzzle): Tool | undefined {
   };
 }
 
+function filedBy({ attribution }: Transmission): string | undefined {
+  if (!attribution) return undefined;
+  const handle = attribution.handle ? ` (${attribution.handle})` : '';
+  return `FILED BY: ${attribution.author}${handle}`;
+}
+
 function archiveTool(context: ToolContext, terminal: Terminal, refresh: () => void): void {
   const { game, echo } = context;
   openArchive(terminal.openPanel(), game.archives, (archive) => {
@@ -159,6 +167,8 @@ export function buildTools(context: ToolContext): Tool[] {
         for (const transmission of game.transmissions()) {
           terminal.print([transmission.title], 'dim');
           terminal.print(transmission.body);
+          const credit = filedBy(transmission);
+          if (credit) terminal.print([credit], 'dim');
         }
       },
     });
@@ -172,6 +182,22 @@ export function buildTools(context: ToolContext): Tool[] {
           terminal.closePanel();
           enterSector(context, terminal, refresh, node);
         });
+      },
+    });
+  }
+  for (const artifact of content.artifacts) {
+    if (!evaluate(artifact.requires, game.facts())) continue;
+    tools.push({
+      id: artifact.id,
+      label: artifact.name,
+      run(terminal, refresh) {
+        terminal.print(artifact.description);
+        openArtifact(terminal.openPanel(), artifact);
+        if (game.grant(artifact.grantsOnOpen).length > 0) {
+          const reaction = game.say(echo, 'reaction');
+          if (reaction) terminal.print(reaction.text);
+        }
+        refresh();
       },
     });
   }

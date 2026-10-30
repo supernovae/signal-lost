@@ -391,6 +391,17 @@ body[data-tool='open'] .terminal-log {
   content: '\25C7  ' / '';
 }
 
+.artifact-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.artifact-links a {
+  color: var(--phosphor);
+}
+
 .tool-panel[hidden] {
   display: none;
 }

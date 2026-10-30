@@ -1,0 +1,45 @@
+name: File a transmission
+description: Add a signal to the universe of SIGNAL//LOST. No code needed.
+title: 'Transmission: '
+labels: ['swarm:community']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A transmission is a short piece of text the player finds in the game. Write it here and a maintainer or contributor will turn it into content and credit you. Everything is reviewed before it reaches the game.
+  - type: input
+    id: transmission-title
+    attributes:
+      label: Title
+      description: What the terminal lists it as.
+      placeholder: TX-C02  SOMETHING ON THE SECOND LINE
+    validations:
+      required: true
+  - type: textarea
+    id: transmission-body
+    attributes:
+      label: The transmission
+      description: The text itself, line by line. Short and strange beats long and explained.
+    validations:
+      required: true
+  - type: textarea
+    id: transmission-unlock
+    attributes:
+      label: When should a player find it?
+      description: For example, after finishing Episode 000 or after opening the panel at Relay 07.
+    validations:
+      required: false
+  - type: input
+    id: transmission-credit
+    attributes:
+      label: How should we credit you?
+      description: The name shown in the game as FILED BY. Leave blank to use your GitHub handle.
+    validations:
+      required: false
+  - type: checkboxes
+    id: transmission-original
+    attributes:
+      label: Original work
+      options:
+        - label: I wrote this, or have the right to contribute it under this project's MIT license.
+          required: true

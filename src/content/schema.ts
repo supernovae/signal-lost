@@ -173,6 +173,7 @@ export const artifactSchema = z.strictObject({
   description: text,
   requires: condition.optional(),
   links: z.array(z.strictObject({ label: z.string(), url: z.url() })).default([]),
+  grantsOnOpen: z.array(fact).default([]),
 });
 
 export const screenSchema = z.strictObject({
