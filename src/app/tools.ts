@@ -7,6 +7,9 @@ import { openInquiry } from '../puzzle/inquiry-view.ts';
 import { openAnalyzer } from '../signal/analyzer-view.ts';
 import type { Terminal } from '../terminal/terminal.ts';
 import { openArchive } from '../world/archive-view.ts';
+import { mapNodes, type MapNode } from '../world/map.ts';
+import { openMap } from '../world/map-view.ts';
+import { openCodePanel } from '../world/sector-view.ts';
 import type { Tool } from './hub.ts';
 
 export interface ToolContext {
@@ -87,6 +90,50 @@ function puzzleTool(context: ToolContext, puzzle: Puzzle): Tool | undefined {
   };
 }
 
+function archiveTool(context: ToolContext, terminal: Terminal, refresh: () => void): void {
+  const { game, echo } = context;
+  openArchive(terminal.openPanel(), game.archives, (archive) => {
+    const added = game.grant([`read:${archive.id}`]);
+    if (added.length > 0) {
+      const reaction = game.say(echo, 'reaction');
+      if (reaction) terminal.print(reaction.text);
+    }
+    refresh();
+  });
+}
+
+function enterSector(
+  context: ToolContext,
+  terminal: Terminal,
+  refresh: () => void,
+  { sector, enterable }: MapNode,
+): void {
+  const { game, echo } = context;
+  terminal.print([sector.name], 'dim');
+  if (!enterable) {
+    terminal.print(sector.lockedText, 'alert');
+    return;
+  }
+  terminal.print(sector.description);
+  if (game.grant(sector.grantsOnEnter).length > 0) {
+    const reaction = game.say(echo, 'reaction');
+    if (reaction) terminal.print(reaction.text);
+  }
+  if (sector.opens === 'archive') {
+    archiveTool(context, terminal, refresh);
+  } else if (sector.puzzle && game.isAvailable(sector.puzzle)) {
+    const puzzleId = sector.puzzle;
+    if (game.isSolved(puzzleId)) {
+      terminal.print(game.puzzle(puzzleId).success, 'dim');
+    } else {
+      openCodePanel(terminal.openPanel(), (code) => {
+        reportAttempt(context, terminal, refresh, game.attempt(puzzleId, { kind: 'code', code }));
+      });
+    }
+  }
+  refresh();
+}
+
 export function buildTools(context: ToolContext): Tool[] {
   const { content, game, echo } = context;
   const tools: Tool[] = [];
@@ -101,16 +148,7 @@ export function buildTools(context: ToolContext): Tool[] {
     tools.push({
       id: 'archive',
       label: 'ARCHIVE',
-      run(terminal, refresh) {
-        openArchive(terminal.openPanel(), game.archives, (archive) => {
-          const added = game.grant([`read:${archive.id}`]);
-          if (added.length > 0) {
-            const reaction = game.say(echo, 'reaction');
-            if (reaction) terminal.print(reaction.text);
-          }
-          refresh();
-        });
-      },
+      run: (terminal, refresh) => archiveTool(context, terminal, refresh),
     });
   }
   if (game.transmissions().length > 0) {
@@ -122,6 +160,18 @@ export function buildTools(context: ToolContext): Tool[] {
           terminal.print([transmission.title], 'dim');
           terminal.print(transmission.body);
         }
+      },
+    });
+  }
+  if (mapNodes(content.sectors, game.facts()).length > 0) {
+    tools.push({
+      id: 'map',
+      label: 'NETWORK MAP',
+      run(terminal, refresh) {
+        openMap(terminal.openPanel(), mapNodes(content.sectors, game.facts()), (node) => {
+          terminal.closePanel();
+          enterSector(context, terminal, refresh, node);
+        });
       },
     });
   }

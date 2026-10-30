@@ -213,6 +213,10 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
     checkCondition(sector.visibleWhen, sector, 'visibleWhen');
     checkCondition(sector.enterableWhen, sector, 'enterableWhen');
     sector.grantsOnEnter.forEach((g, i) => checkFact(g, sector, `grantsOnEnter.${i}`, true));
+    if (sector.puzzle && !ids.puzzles.has(sector.puzzle)) {
+      const { file } = sources.get(sector)!;
+      errors.push({ file, field: 'puzzle', message: `unknown puzzle "${sector.puzzle}"` });
+    }
   }
 }
 

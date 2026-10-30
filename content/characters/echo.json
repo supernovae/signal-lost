@@ -242,6 +242,64 @@
       "text": [
         "ECHO: Filed. Nobody has filed anything here in twenty-five years. Give me a moment."
       ]
+    },
+    {
+      "id": "echo.service.hint.1",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "completed:episode.000",
+          {
+            "not": "solved:puzzle.service"
+          }
+        ]
+      },
+      "priority": 2,
+      "text": [
+        "ECHO: There is a panel at 07 that wants a code. The site has been saying something with its power bill. People who pay bills do not read them as carefully as you do."
+      ]
+    },
+    {
+      "id": "echo.service.hint.2",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "completed:episode.000",
+          {
+            "not": "solved:puzzle.service"
+          }
+        ]
+      },
+      "failures": {
+        "puzzle": "puzzle.service",
+        "atLeast": 2
+      },
+      "priority": 3,
+      "text": [
+        "ECHO: You already know one language for reading little blocks of light. Use the copy of it that's in force."
+      ]
+    },
+    {
+      "id": "echo.relay.entered",
+      "kind": "reaction",
+      "when": "discovered:relay-07",
+      "once": true,
+      "priority": 6,
+      "text": [
+        "ECHO: You are the first thing to arrive there since a man left a mug.",
+        "ECHO: I can't see the room. I can only see what it's still sending."
+      ]
+    },
+    {
+      "id": "echo.service.solved",
+      "kind": "reaction",
+      "when": "solved:puzzle.service",
+      "once": true,
+      "priority": 7,
+      "text": [
+        "ECHO: That panel isn't in any of my records. Either copy.",
+        "ECHO: Which means someone put it there on purpose, and did not tell me. I find I'm pleased."
+      ]
     }
   ]
 }

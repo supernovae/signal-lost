@@ -1,0 +1,19 @@
+{
+  "id": "silent-observatory",
+  "name": "SILENT OBSERVATORY",
+  "position": {
+    "x": 80,
+    "y": 72
+  },
+  "visibleWhen": "completed:episode.000",
+  "enterableWhen": {
+    "not": "completed:episode.000"
+  },
+  "description": [],
+  "lockedText": [
+    "NO CARRIER",
+    "",
+    "A LINE ANSWERS, AND HOLDS OPEN, AND DOES NOT SPEAK.",
+    "ACCESS LIST: 2 OBSERVERS REQUIRED. OBSERVERS ONLINE: 1."
+  ]
+}

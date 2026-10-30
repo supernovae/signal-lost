@@ -163,6 +163,8 @@ export const sectorSchema = z.strictObject({
   enterableWhen: condition.optional(),
   lockedText: text.default([]),
   grantsOnEnter: z.array(fact).default([]),
+  opens: z.literal('archive').optional(),
+  puzzle: id.optional(),
 });
 
 export const artifactSchema = z.strictObject({

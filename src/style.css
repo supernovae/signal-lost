@@ -346,6 +346,51 @@ body[data-tool='open'] .terminal-log {
   padding: 0.5rem 0;
 }
 
+.network-map {
+  position: relative;
+  flex: 1;
+  min-height: 12rem;
+  border: 1px solid var(--phosphor-dim);
+  background:
+    radial-gradient(1px 1px at 12% 22%, #cfd8e3, transparent),
+    radial-gradient(1px 1px at 33% 12%, #9fb4c8, transparent),
+    radial-gradient(1px 1px at 47% 78%, #cfd8e3, transparent),
+    radial-gradient(1px 1px at 71% 18%, #9fb4c8, transparent),
+    radial-gradient(1px 1px at 90% 40%, #cfd8e3, transparent),
+    radial-gradient(1px 1px at 18% 88%, #9fb4c8, transparent), #03060e;
+}
+
+.network-map svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.network-map line {
+  stroke: var(--phosphor-dim);
+  stroke-width: 1;
+}
+
+.map-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: #05091499;
+}
+
+.map-node::before {
+  content: '\25C6  ' / '';
+}
+
+.map-node-locked {
+  color: var(--phosphor-dim);
+  border-style: dashed;
+}
+
+.map-node-locked::before {
+  content: '\25C7  ' / '';
+}
+
 .tool-panel[hidden] {
   display: none;
 }
