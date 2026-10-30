@@ -1,0 +1,20 @@
+{
+  "id": "relay07.logbook",
+  "board": "RELAY-07",
+  "title": "RELAY 07 STATION LOG (RECOVERED)",
+  "from": "RELAY 07",
+  "date": "1999-2001",
+  "requires": "solved:puzzle.pattern",
+  "searchOnly": true,
+  "keywords": ["417"],
+  "body": [
+    "DATE   FREQ MHZ  DRIFT  NOTE",
+    "99041  1418.22   +0.10  FAINT. GONE BY NEXT PASS.",
+    "99188  1421.37   +0.42  WRONG SIGN. SATELLITE, PROBABLY.",
+    "99306  1421.37   -0.42  UNRESOLVED. HOLD FOR REVIEW. NOT LOCAL.",
+    "99307  1420.41    0.00  OURS. THE HEATER.",
+    "00071  1421.37   -0.42  AGAIN.",
+    "00244  1421.37   -0.42  AGAIN. SAME BITS.",
+    "01073  1421.37   -0.42  PROJECT OFFICE SAYS THIS ONE IS THE FIRST."
+  ]
+}

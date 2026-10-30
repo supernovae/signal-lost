@@ -1,0 +1,19 @@
+{
+  "id": "bbs.keel",
+  "board": "RELAY-07",
+  "title": "THEY WANT 07 OFF THE LIST",
+  "from": "TKEEL",
+  "date": "2001-02-26",
+  "requires": "solved:puzzle.pattern",
+  "searchOnly": true,
+  "keywords": ["417"],
+  "body": [
+    "The order came in writing today. 07 comes off the peer list before the announcement. Off the list. I asked if that meant off the air and got no reply, so I drove up there, took it off the list, and left everything else exactly as I found it.",
+    "",
+    "It wasn't Marek, before anyone starts. You know who has to sign these.",
+    "",
+    "I don't know why you'd announce a discovery and cut off the station that made it. I'm a sysop. Nobody tells me.",
+    "",
+    "- TK"
+  ]
+}

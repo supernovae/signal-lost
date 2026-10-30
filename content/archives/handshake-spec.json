@@ -1,0 +1,18 @@
+{
+  "id": "spec.handshake",
+  "board": "FIELD",
+  "title": "CLIENT HANDSHAKE SPEC V1",
+  "from": "PROJECT OFFICE",
+  "date": "2000-01-17",
+  "requires": "solved:puzzle.pattern",
+  "keywords": ["handshake", "protocol", "spec", "join"],
+  "body": [
+    "A CLIENT JOINS THE NETWORK BY SENDING A JOIN HEADER, THEN ITS WORK QUEUE.",
+    "",
+    "JOIN HEADER: 91 BITS, 7 ROWS OF 13.",
+    "VALUE: RESERVED CONSTANT, SUPPLIED BY THE PROJECT OFFICE.",
+    "DO NOT CHANGE IT. CLIENTS THAT CHANGE IT WILL NOT BE ANSWERED.",
+    "",
+    "ORIGIN OF CONSTANT: [THIS LINE LEFT BLANK AT THE REQUEST OF THE DIRECTOR]"
+  ]
+}

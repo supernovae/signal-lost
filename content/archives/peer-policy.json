@@ -1,0 +1,13 @@
+{
+  "id": "ops.peer-policy",
+  "board": "OPS",
+  "title": "PEER LIST POLICY",
+  "from": "PROJECT OFFICE",
+  "date": "2000-02-08",
+  "requires": "solved:puzzle.pattern",
+  "keywords": ["peer", "policy", "relay"],
+  "body": [
+    "ADDING A RELAY TO THE PEER LIST: ANY SYSOP.",
+    "REMOVING A RELAY FROM THE PEER LIST: PROJECT DIRECTOR, IN WRITING. NO EXCEPTIONS."
+  ]
+}

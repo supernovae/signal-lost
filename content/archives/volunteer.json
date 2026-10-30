@@ -1,0 +1,14 @@
+{
+  "id": "bbs.volunteer",
+  "board": "GENERAL",
+  "title": "my computer found nothing again",
+  "from": "NIGHTSHIFT",
+  "date": "2000-04-12",
+  "requires": "solved:puzzle.carrier",
+  "keywords": ["general", "volunteer"],
+  "body": [
+    "three years of units and my pc has found nothing. which is fine. my wife asks why i leave it on and i say somebody should be listening. she says that's not an answer.",
+    "",
+    "it's 4am here. anyone else up?"
+  ]
+}

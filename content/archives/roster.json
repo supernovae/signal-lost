@@ -1,0 +1,15 @@
+{
+  "id": "personnel.roster",
+  "board": "PERSONNEL",
+  "title": "STAFF AND SYSOP ROSTER",
+  "from": "PROJECT OFFICE",
+  "date": "2000-09-01",
+  "requires": "solved:puzzle.carrier",
+  "keywords": ["roster", "staff", "personnel"],
+  "body": [
+    "MOYE    DR. MARIT OYELARAN   PROJECT DIRECTOR",
+    "MOYEN   MAREK OYEN           VOLUNTEER COORDINATOR, NEWSLETTER",
+    "TKEEL   TOMASZ KEEL          SYSOP, DEEP FIELD BBS. RELAY FIELD SERVICE",
+    "ECHO    (PROCESS)            COORDINATION. DOES NOT SIGN ANYTHING"
+  ]
+}

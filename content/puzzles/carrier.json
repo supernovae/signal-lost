@@ -16,17 +16,40 @@
     "secondsPerRow": 8,
     "noiseFloor": 1,
     "lines": [
-      { "freqMhz": 1421.37, "driftHzPerSec": -0.42, "amplitude": 1.3, "terrestrial": false },
-      { "freqMhz": 1421.3695, "driftHzPerSec": 0, "amplitude": 3, "terrestrial": true },
-      { "freqMhz": 1421.3706, "driftHzPerSec": 0, "amplitude": 3, "terrestrial": true }
+      {
+        "freqMhz": 1421.37,
+        "driftHzPerSec": -0.42,
+        "amplitude": 1.3,
+        "terrestrial": false
+      },
+      {
+        "freqMhz": 1421.3695,
+        "driftHzPerSec": 0,
+        "amplitude": 3,
+        "terrestrial": true
+      },
+      {
+        "freqMhz": 1421.3706,
+        "driftHzPerSec": 0,
+        "amplitude": 3,
+        "terrestrial": true
+      }
     ]
   },
   "bandwidthsHz": [100, 20, 5],
-  "solution": { "minSnr": 8, "toleranceHz": 10 },
+  "solution": {
+    "minSnr": 8,
+    "toleranceHz": 10
+  },
   "feedback": {
     "terrestrial": ["LOCK REFUSED. THAT LINE DOES NOT MOVE. NEITHER DOES THE BUILDING."],
     "weak": ["SOMETHING THERE, BUT THE POWER IS SMEARED ACROSS THE PASSBAND."],
     "noLine": ["NOTHING AT THIS FREQUENCY."]
   },
-  "success": ["CARRIER LOCKED."]
+  "success": [
+    "CARRIER LOCKED. 1421.37 MHZ, DRIFT -0.42 HZ/S.",
+    "DEMODULATING... 91 BITS RECOVERED. FILED TO TRANSMISSIONS AS TX-001.",
+    "NEW TOOLS AVAILABLE: DECODER, ARCHIVE."
+  ],
+  "grants": ["acquired:tx.fragment"]
 }

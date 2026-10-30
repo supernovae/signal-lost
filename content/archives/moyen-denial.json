@@ -1,0 +1,16 @@
+{
+  "id": "bbs.moyen",
+  "board": "GENERAL",
+  "title": "PLEASE STOP ASKING ME ABOUT 07",
+  "from": "MOYEN",
+  "date": "2000-11-20",
+  "requires": "solved:puzzle.pattern",
+  "keywords": ["relay", "07", "moyen"],
+  "body": [
+    "I've had six messages about a relay I have never heard of. I run the newsletter and the t-shirt fund. My name is close to somebody else's name. That is the whole story.",
+    "",
+    "The t-shirts are nearly here.",
+    "",
+    "- Marek"
+  ]
+}

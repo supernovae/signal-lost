@@ -1,0 +1,31 @@
+{
+  "id": "puzzle.archive",
+  "kind": "inquiry",
+  "title": "THE ARCHIVE",
+  "requires": "solved:puzzle.pattern",
+  "briefing": [
+    "INCIDENT RECONSTRUCTION FORM 7-B. FILL IN WHAT THE RECORD SUPPORTS.",
+    "THE FORM WILL NOT SAY WHICH FIELD IS WRONG. RECORDS OFFICE POLICY."
+  ],
+  "fields": [
+    {
+      "id": "first-receipt",
+      "label": "FIRST RECEIPT (YYYY-MM-DD)",
+      "answer": "1999-11-02"
+    },
+    {
+      "id": "ordered-by",
+      "label": "DISCONNECT ORDERED BY",
+      "answer": "MOYE",
+      "options": ["MOYE", "MOYEN", "TKEEL", "ECHO"]
+    },
+    {
+      "id": "status",
+      "label": "RELAY 07 STATUS",
+      "answer": "RUNNING",
+      "options": ["DESTROYED", "DECOMMISSIONED", "RUNNING"]
+    }
+  ],
+  "grants": ["acquired:tx.reconstructed"],
+  "success": ["ALL FIELDS CONSISTENT. RECONSTRUCTION FILED."]
+}

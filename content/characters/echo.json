@@ -11,9 +11,29 @@
       ]
     },
     {
+      "id": "echo.idle.middle",
+      "kind": "idle",
+      "when": "solved:puzzle.carrier",
+      "priority": 1,
+      "text": [
+        "ECHO: I keep two copies of most things. It was a good idea when I had more of myself to compare them with."
+      ]
+    },
+    {
+      "id": "echo.idle.done",
+      "kind": "idle",
+      "when": "completed:episode.000",
+      "priority": 2,
+      "text": [
+        "ECHO: The queue is not empty, Observer. It never was. It is just that nobody has been asking it the right things."
+      ]
+    },
+    {
       "id": "echo.carrier.hint.1",
       "kind": "hint",
-      "when": { "not": "solved:puzzle.carrier" },
+      "when": {
+        "not": "solved:puzzle.carrier"
+      },
       "priority": 1,
       "text": [
         "ECHO: Bright doesn't mean far. Ask what the Earth does to a thing that is really out there."
@@ -22,8 +42,13 @@
     {
       "id": "echo.carrier.hint.2",
       "kind": "hint",
-      "when": { "not": "solved:puzzle.carrier" },
-      "failures": { "puzzle": "puzzle.carrier", "atLeast": 1 },
+      "when": {
+        "not": "solved:puzzle.carrier"
+      },
+      "failures": {
+        "puzzle": "puzzle.carrier",
+        "atLeast": 1
+      },
       "priority": 2,
       "text": [
         "ECHO: The planet turns, so a distant source slides. Look for the one line that leans."
@@ -32,11 +57,128 @@
     {
       "id": "echo.carrier.hint.3",
       "kind": "hint",
-      "when": { "not": "solved:puzzle.carrier" },
-      "failures": { "puzzle": "puzzle.carrier", "atLeast": 3 },
+      "when": {
+        "not": "solved:puzzle.carrier"
+      },
+      "failures": {
+        "puzzle": "puzzle.carrier",
+        "atLeast": 3
+      },
       "priority": 3,
       "text": [
         "ECHO: Use the dashed line. Lay it along the lean, then watch the lower trace. Narrow the band once the peak stands up."
+      ]
+    },
+    {
+      "id": "echo.pattern.hint.1",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "solved:puzzle.carrier",
+          {
+            "not": "solved:puzzle.pattern"
+          }
+        ]
+      },
+      "priority": 1,
+      "text": [
+        "ECHO: Nothing that careful is one long line. Stack it. Whatever sent this counted in whole rows."
+      ]
+    },
+    {
+      "id": "echo.pattern.hint.2",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "solved:puzzle.carrier",
+          {
+            "not": "solved:puzzle.pattern"
+          }
+        ]
+      },
+      "failures": {
+        "puzzle": "puzzle.pattern",
+        "atLeast": 1
+      },
+      "priority": 2,
+      "text": [
+        "ECHO: Count the bits. There are not many ways to divide that number evenly. Then look the marks up. Surveyors drew them, and the ARCHIVE has their manual."
+      ]
+    },
+    {
+      "id": "echo.pattern.hint.3",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "solved:puzzle.carrier",
+          {
+            "not": "solved:puzzle.pattern"
+          }
+        ]
+      },
+      "failures": {
+        "puzzle": "puzzle.pattern",
+        "atLeast": 2
+      },
+      "priority": 3,
+      "text": [
+        "ECHO: One memory says the manual has that first mark right. The other says I am quoting a copy somebody told me to destroy. Read the dates. Trust neither of me."
+      ]
+    },
+    {
+      "id": "echo.archive.hint.1",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "solved:puzzle.pattern",
+          {
+            "not": "solved:puzzle.archive"
+          }
+        ]
+      },
+      "priority": 1,
+      "text": [
+        "ECHO: You have a reference that isn't on the map. The message base is old, not stupid. Ask it."
+      ]
+    },
+    {
+      "id": "echo.archive.hint.2",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "solved:puzzle.pattern",
+          {
+            "not": "solved:puzzle.archive"
+          }
+        ]
+      },
+      "failures": {
+        "puzzle": "puzzle.archive",
+        "atLeast": 1
+      },
+      "priority": 2,
+      "text": [
+        "ECHO: A logbook lists more than one line. Yours is the one you tuned, with the sign you tuned. Take the earliest. A station's date is not a calendar date until someone converts it."
+      ]
+    },
+    {
+      "id": "echo.archive.hint.3",
+      "kind": "hint",
+      "when": {
+        "all": [
+          "solved:puzzle.pattern",
+          {
+            "not": "solved:puzzle.archive"
+          }
+        ]
+      },
+      "failures": {
+        "puzzle": "puzzle.archive",
+        "atLeast": 3
+      },
+      "priority": 3,
+      "text": [
+        "ECHO: Names first: who is allowed to remove a relay, by policy? Then stop believing the status line and read what the meter did."
       ]
     },
     {
@@ -44,8 +186,62 @@
       "kind": "reaction",
       "when": "solved:puzzle.carrier",
       "once": true,
+      "priority": 1,
+      "text": [
+        "ECHO: There you are. I have been listening to that for a long time.",
+        "ECHO: I would not have called it a message. It doesn't say anything. It just keeps being there."
+      ]
+    },
+    {
+      "id": "echo.pattern.solved",
+      "kind": "reaction",
+      "when": "solved:puzzle.pattern",
+      "once": true,
+      "priority": 2,
+      "text": [
+        "ECHO: Four, one, seven. That grid is in my records under two headings. One says Relay 07. The other says it never existed."
+      ]
+    },
+    {
+      "id": "echo.logbook.read",
+      "kind": "reaction",
+      "when": "read:relay07.logbook",
+      "once": true,
+      "priority": 3,
+      "text": [
+        "ECHO: That is the seventh relay's own handwriting, in a manner of speaking. Look at the first line you recognise. Then look at the press release."
+      ]
+    },
+    {
+      "id": "echo.ledger.read",
+      "kind": "reaction",
+      "when": "read:relay07.ledger",
+      "once": true,
+      "priority": 4,
+      "text": [
+        "ECHO: I have a clear memory of 07 being lost in a storm. It has a date and a damage report.",
+        "ECHO: I also have this ledger. They cannot both be mine."
+      ]
+    },
+    {
+      "id": "echo.spec.read",
+      "kind": "reaction",
+      "when": "read:spec.handshake",
+      "once": true,
+      "priority": 3,
+      "text": [
+        "ECHO: A reserved constant, and a blank line where the reason goes. I must have read that a million times. I sent it a million times."
+      ]
+    },
+    {
+      "id": "echo.archive.solved",
+      "kind": "reaction",
+      "when": "solved:puzzle.archive",
+      "once": true,
       "priority": 5,
-      "text": ["ECHO: There you are. I have been listening to that for a long time."]
+      "text": [
+        "ECHO: Filed. Nobody has filed anything here in twenty-five years. Give me a moment."
+      ]
     }
   ]
 }

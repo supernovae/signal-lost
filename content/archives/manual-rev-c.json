@@ -1,0 +1,20 @@
+{
+  "id": "manual.rev-c",
+  "board": "FIELD",
+  "title": "FIELD MANUAL REV C: SURVEY MARKS",
+  "from": "SURVEY GROUP",
+  "date": "1999-06-30",
+  "requires": "solved:puzzle.carrier",
+  "keywords": ["manual", "marks", "survey"],
+  "body": [
+    "REV C. SUPERSEDES ALL EARLIER REVISIONS. DESTROY REV A AND REV B.",
+    "GRID REFERENCES ARE SENT AS THREE MARKS, 3 BY 5.",
+    "",
+    "VALUE 0    1    2    3    4    5    6    7    8    9  ",
+    "MARK  .#.  .#.  ###  #.#  #..  ###  .##  ###  ###  ###",
+    "MARK  #.#  .#.  ..#  #.#  #..  #..  #..  .#.  #.#  #.#",
+    "MARK  #.#  .#.  .#.  .#.  ###  ##.  ###  .#.  ###  ###",
+    "MARK  #.#  .#.  #..  #.#  .#.  ..#  #.#  .#.  #.#  ..#",
+    "MARK  .#.  .#.  ###  #.#  .#.  ##.  ###  #.#  ###  ..#"
+  ]
+}

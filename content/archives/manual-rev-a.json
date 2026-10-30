@@ -1,0 +1,20 @@
+{
+  "id": "manual.rev-a",
+  "board": "FIELD",
+  "title": "FIELD MANUAL REV A: SURVEY MARKS",
+  "from": "SURVEY GROUP",
+  "date": "1997-02-11",
+  "requires": "solved:puzzle.carrier",
+  "keywords": ["manual", "marks", "survey"],
+  "body": [
+    "REV A. PRINTED FOR THE PILOT SURVEY.",
+    "GRID REFERENCES ARE SENT AS THREE MARKS, 3 BY 5.",
+    "",
+    "VALUE 0    1    2    3    4    5    6    7    8    9  ",
+    "MARK  .#.  .#.  ###  #.#  ###  ###  .##  #..  ###  ###",
+    "MARK  #.#  .#.  ..#  #.#  .#.  #..  #..  #..  #.#  #.#",
+    "MARK  #.#  .#.  .#.  .#.  .#.  ##.  ###  ###  ###  ###",
+    "MARK  #.#  .#.  #..  #.#  .#.  ..#  #.#  .#.  #.#  ..#",
+    "MARK  .#.  .#.  ###  #.#  #.#  ##.  ###  .#.  ###  ..#"
+  ]
+}
