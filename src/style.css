@@ -115,13 +115,14 @@ body[data-render='fallback'] .crt {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .interference {
-    display: none;
-  }
-  .blink {
-    animation: none;
-  }
+body[data-motion='off'] .interference,
+body[data-effects='off'] .interference,
+body[data-effects='off'] .effects {
+  display: none;
+}
+
+body[data-motion='off'] .blink {
+  animation: none;
 }
 
 p {
@@ -246,6 +247,23 @@ body[data-tool='open'] .terminal-log {
   flex-direction: column;
   gap: 0.5rem;
   overflow-y: auto;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.settings-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.settings input[type='checkbox'] {
+  accent-color: var(--phosphor);
 }
 
 .tool-panel[hidden] {

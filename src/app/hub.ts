@@ -23,7 +23,10 @@ export function createHub(
         tools.map((tool, index) => ({
           key: String(index + 1),
           label: tool.label,
-          run: () => tool.run(active),
+          run() {
+            active.closePanel();
+            tool.run(active);
+          },
         })),
       );
       active.onCommand((command) => {

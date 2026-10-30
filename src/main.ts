@@ -1,9 +1,11 @@
 import { createHub, type Tool } from './app/hub.ts';
 import { createOpening } from './app/opening.ts';
+import { applyPreferences, effectiveMotion, openSettings } from './app/settings.ts';
 import { createSceneManager } from './app/scenes.ts';
 import { loadBundledContent } from './content/browser.ts';
+import { createAudio } from './audio/audio.ts';
 import { createScriptedDialogue } from './narrative/dialogue.ts';
-import { loadSave, writeSave } from './progress/save.ts';
+import { loadSave, resetSave, writeSave } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
 import { createRenderHost } from './render/host.ts';
 import { openAnalyzer } from './signal/analyzer-view.ts';
@@ -24,11 +26,23 @@ const game = createGame({
 });
 const echo = createScriptedDialogue(content.characters.find((c) => c.id === 'echo')!);
 
-const motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const audio = createAudio();
+const systemReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const applySettings = (): void => {
+  applyPreferences(data.preferences, systemReduced, {
+    setMuted: (muted) => audio.setMuted(muted),
+    setMotion: (enabled) => renderHost.environment?.setMotion(enabled),
+    setAttribute(name, value) {
+      document.body.dataset[name] = value;
+    },
+  });
+};
 const renderHost = createRenderHost(
   async () => {
     const { createEnvironment } = await import('./render/environment.ts');
-    const environment = createEnvironment(canvas, { motion });
+    const environment = createEnvironment(canvas, {
+      motion: effectiveMotion(data.preferences, systemReduced),
+    });
     document.body.dataset['render'] = 'webgl';
     return environment;
   },
@@ -37,12 +51,32 @@ const renderHost = createRenderHost(
   },
 );
 window.addEventListener('pagehide', () => renderHost.dispose());
+applySettings();
 
 const tools: Tool[] = [
   {
     id: 'status',
     label: 'STATUS',
     run: (terminal) => terminal.print(['LINK: ONE-WAY', 'OBSERVERS ONLINE: 1'], 'dim'),
+  },
+  {
+    id: 'settings',
+    label: 'SETTINGS',
+    run(terminal) {
+      openSettings(terminal.openPanel(), {
+        preferences: data.preferences,
+        systemReduced,
+        onChange() {
+          writeSave(localStorage, data);
+          applySettings();
+        },
+        onReset() {
+          resetSave(localStorage);
+          window.location.reload();
+        },
+        onClose: () => terminal.closePanel(),
+      });
+    },
   },
   {
     id: 'help',
@@ -71,15 +105,21 @@ for (const puzzle of content.puzzles) {
         return;
       }
       terminal.print(puzzle.briefing);
-      openAnalyzer(terminal.openPanel(), puzzle, ({ outcome }) => {
-        const result = game.attempt(puzzle.id, { kind: 'carrier', outcome });
-        terminal.print(result.feedback, result.status === 'solved' ? 'normal' : 'alert');
-        if (result.status === 'solved') {
-          terminal.closePanel();
-          const reaction = game.say(echo, 'reaction');
-          if (reaction) terminal.print(reaction.text);
-        }
-      });
+      openAnalyzer(
+        terminal.openPanel(),
+        puzzle,
+        ({ outcome }) => {
+          const result = game.attempt(puzzle.id, { kind: 'carrier', outcome });
+          terminal.print(result.feedback, result.status === 'solved' ? 'normal' : 'alert');
+          audio.play(result.status === 'solved' ? 'success' : 'error');
+          if (result.status === 'solved') {
+            terminal.closePanel();
+            const reaction = game.say(echo, 'reaction');
+            if (reaction) terminal.print(reaction.text);
+          }
+        },
+        () => audio.play('interference'),
+      );
     },
   });
 }
@@ -87,6 +127,8 @@ for (const puzzle of content.puzzles) {
 const scenes = createSceneManager();
 scenes.show(
   createOpening(root, screen('opening'), () => {
+    audio.unlock();
+    audio.play('startup');
     scenes.show(createHub(root, screen('boot'), tools));
   }),
 );
