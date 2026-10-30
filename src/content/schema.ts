@@ -47,6 +47,7 @@ const puzzleBase = {
   briefing: text,
   requires: condition.optional(),
   grants: z.array(fact).default([]),
+  success: text.default([]),
 };
 
 export const signalLineSchema = z.strictObject({

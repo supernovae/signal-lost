@@ -9,6 +9,9 @@ export interface Terminal {
   menu(items: readonly MenuItem[]): void;
   onCommand(handler: (command: string) => void): void;
   focus(): void;
+  /** Opens the tool panel, replacing any open tool. */
+  openPanel(): HTMLElement;
+  closePanel(): void;
   dispose(): void;
 }
 
@@ -40,7 +43,11 @@ export function createTerminal(root: HTMLElement): Terminal {
   input.setAttribute('autocapitalize', 'characters');
   form.append(caret, input);
 
-  element.append(log, nav, form);
+  const panel = document.createElement('section');
+  panel.className = 'tool-panel';
+  panel.hidden = true;
+
+  element.append(log, panel, nav, form);
   root.append(element);
 
   let handler: (command: string) => void = () => {};
@@ -92,6 +99,20 @@ export function createTerminal(root: HTMLElement): Terminal {
       handler = next;
     },
     focus: () => input.focus(),
-    dispose: () => element.remove(),
+    openPanel() {
+      panel.replaceChildren();
+      panel.hidden = false;
+      document.body.dataset['tool'] = 'open';
+      return panel;
+    },
+    closePanel() {
+      panel.replaceChildren();
+      panel.hidden = true;
+      delete document.body.dataset['tool'];
+    },
+    dispose() {
+      delete document.body.dataset['tool'];
+      element.remove();
+    },
   };
 }
