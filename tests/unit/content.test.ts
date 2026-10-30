@@ -268,6 +268,33 @@ describe('diagnostics', () => {
     });
   });
 
+  const withFailures = (failures: unknown) => {
+    const files = validFiles();
+    const character = files['content/characters/echo.json'] as {
+      lines: Record<string, unknown>[];
+    };
+    character.lines[0]!['failures'] = failures;
+    return files;
+  };
+
+  it('accepts a valid dialogue failure requirement', () => {
+    expect(loadContent(withFailures({ puzzle: 'p.code', atLeast: 2 })).errors).toEqual([]);
+  });
+
+  it.each([{ puzzle: 'p.code', atLeast: 0 }, { puzzle: 'p.code' }, { atLeast: 1 }, 'p.code'])(
+    'rejects the malformed dialogue failure requirement %j',
+    (failures) => {
+      expect(firstError(withFailures(failures)).field).toContain('lines.0.failures');
+    },
+  );
+
+  it('reports a dialogue failure requirement naming an unknown puzzle', () => {
+    expect(firstError(withFailures({ puzzle: 'ghost', atLeast: 1 }))).toMatchObject({
+      file: 'content/characters/echo.json',
+      field: 'lines.0.failures.puzzle',
+    });
+  });
+
   it('reports files outside known directories', () => {
     expect(firstError({ 'content/mystery/x.json': {} }).field).toBe('(file)');
   });

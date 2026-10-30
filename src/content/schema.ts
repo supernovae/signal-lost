@@ -146,6 +146,7 @@ export const characterSchema = z.strictObject({
       id,
       kind: z.enum(['reaction', 'hint', 'idle']),
       when: condition.optional(),
+      failures: z.strictObject({ puzzle: id, atLeast: z.number().int().positive() }).optional(),
       text,
       priority: z.number().int().default(0),
       once: z.boolean().default(false),
