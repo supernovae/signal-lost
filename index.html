@@ -4,9 +4,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SIGNAL//LOST: The Observer Network</title>
+    <meta name="description" content="A signal arrived. Additional observers are required." />
+    <meta name="theme-color" content="#050914" />
   </head>
   <body>
-    <main id="app"></main>
+    <div class="crt">
+      <canvas id="viewscreen" aria-hidden="true"></canvas>
+      <main id="app"></main>
+      <div class="interference" aria-hidden="true"></div>
+      <div class="effects" aria-hidden="true"></div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

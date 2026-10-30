@@ -105,6 +105,7 @@ const validFiles = (): Record<string, unknown> => ({
     links: [{ label: 'L', url: 'https://example.com/' }],
     ...META,
   },
+  'content/screens/opening.json': { id: 'opening', lines: ['hello'], ...META },
   'content/community/pack.json': {
     id: 'pack',
     title: 'P',
@@ -130,6 +131,7 @@ describe('schemas and loading', () => {
       'inquiry',
       'raster',
     ]);
+    expect(content.screens[0]!.lines).toEqual(['hello']);
     expect(content.episodes[0]!.attribution).toBeUndefined();
     expect(content.sectors[0]!.attribution?.handle).toBe('a');
   });

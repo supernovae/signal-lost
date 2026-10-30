@@ -1,0 +1,13 @@
+{
+  "id": "opening",
+  "lines": [
+    "SIGNAL RECEIVED",
+    "ORIGIN: UNKNOWN",
+    "CLASSIFICATION: UNRESOLVED",
+    "CONFIDENCE: 0.0031%",
+    "",
+    "ADDITIONAL OBSERVERS REQUIRED.",
+    "",
+    "PRESS ENTER TO JOIN THE NETWORK"
+  ]
+}
