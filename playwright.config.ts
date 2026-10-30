@@ -1,23 +1,17 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const port = 4173;
-
+// Tests run against the production build, served by request interception in
+// tests/e2e/fixtures.ts. SwarmOS validation sandboxes forbid listening on a port.
 export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 120_000,
   forbidOnly: Boolean(process.env['CI']),
   reporter: 'list',
+  globalSetup: './tests/e2e/global-setup.ts',
   use: {
-    baseURL: `http://127.0.0.1:${port}/signal-lost/`,
+    baseURL: 'https://supernovae.github.io/signal-lost/',
     trace: 'retain-on-failure',
+    launchOptions: { args: ['--no-sandbox'] },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${port} --strictPort`,
-    url: `http://127.0.0.1:${port}/signal-lost/`,
-    reuseExistingServer: !process.env['CI'],
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: 120_000,
-  },
 });
