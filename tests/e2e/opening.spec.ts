@@ -25,7 +25,7 @@ async function expectUsableTerminal(page: Page): Promise<void> {
   await page.getByRole('button', { name: /STATUS/ }).click();
   await expect(log).toContainText('LINK: ONE-WAY');
 
-  await page.getByLabel('OBS>').fill('2');
+  await page.getByLabel('OBS>').fill('help');
   await page.keyboard.press('Enter');
   await expect(log).toContainText('TYPE A TOOL NUMBER');
 

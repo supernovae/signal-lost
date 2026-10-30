@@ -3,6 +3,7 @@ import { createOpening } from './app/opening.ts';
 import { createSceneManager } from './app/scenes.ts';
 import { loadBundledContent } from './content/browser.ts';
 import { createRenderHost } from './render/host.ts';
+import { openAnalyzer } from './signal/analyzer-view.ts';
 import './style.css';
 
 const root = document.querySelector<HTMLElement>('#app')!;
@@ -37,6 +38,30 @@ const tools: Tool[] = [
     run: (terminal) => terminal.print(['TYPE A TOOL NUMBER OR NAME, OR SELECT IT.'], 'dim'),
   },
 ];
+
+for (const puzzle of content.puzzles) {
+  if (puzzle.kind !== 'carrier') continue;
+  tools.unshift({
+    id: puzzle.id,
+    label: 'ANALYZER',
+    run(terminal) {
+      terminal.print(puzzle.briefing);
+      openAnalyzer(terminal.openPanel(), puzzle, ({ outcome }) => {
+        if (outcome === 'locked') {
+          terminal.print(puzzle.success);
+          terminal.closePanel();
+        } else {
+          const feedback = {
+            terrestrial: puzzle.feedback.terrestrial,
+            weak: puzzle.feedback.weak,
+            'no-line': puzzle.feedback.noLine,
+          };
+          terminal.print(feedback[outcome], 'alert');
+        }
+      });
+    },
+  });
+}
 
 const scenes = createSceneManager();
 scenes.show(

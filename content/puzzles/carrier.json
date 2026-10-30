@@ -1,0 +1,32 @@
+{
+  "id": "puzzle.carrier",
+  "kind": "carrier",
+  "title": "THE CARRIER",
+  "briefing": [
+    "SPECTRUM ANALYZER ONLINE. RECOVERED CAPTURE LOADED.",
+    "TOP: FREQUENCY ACROSS, TIME DOWN. BOTTOM: POWER AT THE CURRENT DRIFT.",
+    "SET TUNE, DRIFT AND BANDWIDTH, THEN LOCK."
+  ],
+  "signal": {
+    "seed": 1999306,
+    "startMhz": 1421.369,
+    "binHz": 5,
+    "bins": 400,
+    "rows": 120,
+    "secondsPerRow": 8,
+    "noiseFloor": 1,
+    "lines": [
+      { "freqMhz": 1421.37, "driftHzPerSec": -0.42, "amplitude": 1.3, "terrestrial": false },
+      { "freqMhz": 1421.3695, "driftHzPerSec": 0, "amplitude": 3, "terrestrial": true },
+      { "freqMhz": 1421.3706, "driftHzPerSec": 0, "amplitude": 3, "terrestrial": true }
+    ]
+  },
+  "bandwidthsHz": [100, 20, 5],
+  "solution": { "minSnr": 8, "toleranceHz": 10 },
+  "feedback": {
+    "terrestrial": ["LOCK REFUSED. THAT LINE DOES NOT MOVE. NEITHER DOES THE BUILDING."],
+    "weak": ["SOMETHING THERE, BUT THE POWER IS SMEARED ACROSS THE PASSBAND."],
+    "noLine": ["NOTHING AT THIS FREQUENCY."]
+  },
+  "success": ["CARRIER LOCKED."]
+}
