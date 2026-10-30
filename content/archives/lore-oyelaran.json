@@ -1,0 +1,18 @@
+{
+  "id": "lore.oyelaran",
+  "board": "PERSONNEL",
+  "title": "FROM THE DIRECTOR'S OFFICE (NOT SENT)",
+  "from": "MOYE",
+  "date": "2001-03-13",
+  "requires": "completed:episode.000",
+  "keywords": ["oyelaran", "director", "moye"],
+  "body": [
+    "Draft. Do not send.",
+    "",
+    "Tomasz, you'll want to know why, and I can't tell you, because I'm not sure. We found it in the constant. We put the constant in because we had it, and it worked, and we were tired, and nobody asks what's in a handshake.",
+    "",
+    "If 07 stays on the list, it answers. It has been answering. I don't know what it says. I would like to know what we agreed to before we let 40,000 machines say it again.",
+    "",
+    "Leave the power on."
+  ]
+}

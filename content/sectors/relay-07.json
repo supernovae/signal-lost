@@ -1,0 +1,17 @@
+{
+  "id": "relay-07",
+  "name": "RELAY 07",
+  "position": {
+    "x": 62,
+    "y": 38
+  },
+  "visibleWhen": "completed:episode.000",
+  "grantsOnEnter": ["discovered:relay-07"],
+  "puzzle": "puzzle.service",
+  "description": [
+    "GRID 4-1-7. LINK RESTORED OVER A PATH THIS CLIENT WAS NEVER GIVEN.",
+    "A SHED ON A RIDGE. ONE DISH, STILL TRACKING. THE HEATER IS STILL ON.",
+    "SOMEONE LEFT A MUG ON THE RACK. T. KEEL'S SERVICE TAG IS ON THE DOOR, DATED THE DAY HE TOOK IT OFF THE LIST.",
+    "THE RACK HAS A MAINTENANCE PANEL WITH A THREE-MARK KEYPAD. IT WANTS A SERVICE CODE."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "lore.last-sysop",
+  "board": "GENERAL",
+  "title": "LAST ONE OUT",
+  "from": "TKEEL",
+  "date": "2001-03-01",
+  "requires": "completed:episode.000",
+  "keywords": ["keel", "sysop", "goodbye"],
+  "body": [
+    "They're moving the board to the new site, so this is probably the end of Deep Field as you know it. Four years. 112 callers at the peak, and most of you were me on the second line.",
+    "",
+    "I'm leaving the modem plugged in. Nobody told me not to.",
+    "",
+    "If anybody's still reading this in a few years: leave a message. I'd like to know how it came out.",
+    "",
+    "- TK"
+  ]
+}

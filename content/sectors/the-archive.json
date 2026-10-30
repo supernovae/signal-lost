@@ -1,0 +1,14 @@
+{
+  "id": "the-archive",
+  "name": "THE ARCHIVE",
+  "position": {
+    "x": 28,
+    "y": 62
+  },
+  "visibleWhen": "completed:episode.000",
+  "opens": "archive",
+  "description": [
+    "DEEP FIELD BBS. STILL ANSWERING ON THE THIRD RING.",
+    "NEW MESSAGES HAVE APPEARED SINCE YOUR LAST VISIT. NOBODY HAS DIALLED IN SINCE 2001."
+  ]
+}

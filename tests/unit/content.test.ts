@@ -295,6 +295,21 @@ describe('diagnostics', () => {
     });
   });
 
+  it('accepts a sector linked to a puzzle and an action', () => {
+    const files = validFiles();
+    Object.assign(files['content/sectors/s.json'] as object, {
+      puzzle: 'p.code',
+      opens: 'archive',
+    });
+    expect(loadContent(files).errors).toEqual([]);
+  });
+
+  it('reports a sector linked to an unknown puzzle', () => {
+    const files = validFiles();
+    Object.assign(files['content/sectors/s.json'] as object, { puzzle: 'ghost' });
+    expect(firstError(files)).toMatchObject({ file: 'content/sectors/s.json', field: 'puzzle' });
+  });
+
   it('reports files outside known directories', () => {
     expect(firstError({ 'content/mystery/x.json': {} }).field).toBe('(file)');
   });

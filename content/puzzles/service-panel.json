@@ -1,0 +1,14 @@
+{
+  "id": "puzzle.service",
+  "kind": "code",
+  "title": "MAINTENANCE PANEL",
+  "requires": "completed:episode.000",
+  "briefing": ["ENTER THREE-MARK SERVICE CODE."],
+  "answer": "709",
+  "feedback": ["THE KEYPAD CLICKS AND DOES NOTHING. THE METER KEEPS TURNING."],
+  "grants": ["flag:service-panel-open"],
+  "success": [
+    "THE PANEL SWINGS OPEN.",
+    "BEHIND IT, A SECOND TERMINAL IS WIRED INTO THE RACK. NO POWER LIGHT. A HAND-LETTERED LABEL: FORGE."
+  ]
+}

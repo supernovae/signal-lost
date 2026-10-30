@@ -1,0 +1,20 @@
+{
+  "id": "lore.meter-trace",
+  "board": "RELAY-07",
+  "title": "METER TRACE: WHY DOES IT DIP LIKE THAT",
+  "from": "ACCOUNTS PAYABLE",
+  "date": "2003-05-09",
+  "requires": "completed:episode.000",
+  "keywords": ["meter", "trace", "relay", "07", "power"],
+  "body": [
+    "Whoever reads the meter at the closed site keeps sending this in. Draw at Relay 07 dips on a repeating cycle, and it's been the same cycle for two years.",
+    "",
+    "He plotted one cycle by hour and says it looks like something. It looks like a bill to me. Filing it.",
+    "",
+    "###  .#.  ###",
+    ".#.  #.#  #.#",
+    ".#.  #.#  ###",
+    ".#.  #.#  ..#",
+    "#.#  .#.  ..#"
+  ]
+}
