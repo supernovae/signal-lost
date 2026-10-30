@@ -17,6 +17,11 @@ const CONTENT_TYPES: Record<string, string> = {
 // does, so a root-relative asset URL fails the test.
 export const test = base.extend({
   context: async ({ context }, use) => {
+    // SIGNAL_LOST_LIVE=1 runs the same specs against the deployed site.
+    if (process.env['SIGNAL_LOST_LIVE']) {
+      await use(context);
+      return;
+    }
     await context.route('**/*', async (route) => {
       const { pathname } = new URL(route.request().url());
       if (!pathname.startsWith(SITE_PREFIX)) return route.fulfill({ status: 404 });

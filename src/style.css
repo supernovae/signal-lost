@@ -308,7 +308,7 @@ body[data-tool='open'] .terminal-log {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  max-height: 24%;
+  max-height: 20%;
   flex: none;
   overflow-y: auto;
 }

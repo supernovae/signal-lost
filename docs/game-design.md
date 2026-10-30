@@ -81,7 +81,7 @@ The player receives an Observer designation and the network map opens.
 - **The Archive:** additional lore, including transmissions other people filed.
 - **Silent Observatory:** cannot be reached. It answers `NO CARRIER`, and its entry says it needs more than one Observer. This is an authored hook, not a broken promise.
 
-**Optional discovery:** Relay 07's power ledger repeats a pattern. Reading it as marks from the manual gives a service code for the panel. That unlocks **FORGE**, a partly working terminal that says the network accepts new transmissions from Observers who sign their work, and points to where they are filed: the real repository. ECHO then notices that one archived transmission was not written by anyone it remembers.
+**Optional discovery:** the `METER TRACE` message in The Archive prints one cycle of Relay 07's power dips as three survey marks. Read with Rev C they give service code **7-0-9** (Rev A gives 4-0-9, which fails), which opens the panel at Relay 07. That unlocks **FORGE**, a partly working terminal that says the network accepts new transmissions from Observers who sign their work, and points to where they are filed: the real repository. ECHO looks up the filing office and can't find it in its world. On the new `SECOND-LINE` board, ECHO notices a message that nobody it remembers wrote. That message is the example community package.
 
 ## Tone
 
