@@ -11,7 +11,7 @@ export default defineConfig({
   use: {
     baseURL: 'https://supernovae.github.io/signal-lost/',
     trace: 'retain-on-failure',
-    launchOptions: { args: ['--no-sandbox'] },
+    launchOptions: { args: ['--no-sandbox', '--enable-unsafe-swiftshader'] },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

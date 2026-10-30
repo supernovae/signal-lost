@@ -171,6 +171,11 @@ export const artifactSchema = z.strictObject({
   links: z.array(z.strictObject({ label: z.string(), url: z.url() })).default([]),
 });
 
+export const screenSchema = z.strictObject({
+  ...record,
+  lines: text,
+});
+
 export const communitySchema = z.strictObject({
   ...record,
   title: z.string(),
@@ -191,6 +196,7 @@ export type Character = z.infer<typeof characterSchema>;
 export type DialogueLine = Character['lines'][number];
 export type Sector = z.infer<typeof sectorSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
+export type Screen = z.infer<typeof screenSchema>;
 export type CommunityPackage = z.infer<typeof communitySchema>;
 
 export interface Content {
@@ -201,5 +207,6 @@ export interface Content {
   characters: Character[];
   sectors: Sector[];
   artifacts: Artifact[];
+  screens: Screen[];
   community: CommunityPackage[];
 }

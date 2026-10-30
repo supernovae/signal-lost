@@ -1,0 +1,10 @@
+{
+  "id": "boot",
+  "lines": [
+    "OBSERVER NETWORK CLIENT 2.3",
+    "CHECKING WORK QUEUE ......... 1 UNIT",
+    "PEERS REACHABLE ............. 0",
+    "SYSTEM CLOCK ................ 2001",
+    "TOOLS AVAILABLE TO THIS OBSERVER:"
+  ]
+}

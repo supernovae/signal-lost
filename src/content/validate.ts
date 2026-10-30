@@ -13,6 +13,7 @@ import {
   communitySchema,
   episodeSchema,
   puzzleSchema,
+  screenSchema,
   sectorSchema,
   transmissionSchema,
   type Content,
@@ -46,6 +47,7 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   characters: characterSchema,
   sectors: sectorSchema,
   artifacts: artifactSchema,
+  screens: screenSchema,
   community: communitySchema,
 };
 
@@ -65,6 +67,7 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
     characters: [],
     sectors: [],
     artifacts: [],
+    screens: [],
     community: [],
   };
   const sources = new Map<object, { file: string; prefix: string }>();
