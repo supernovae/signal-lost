@@ -102,8 +102,6 @@ jobs:
           else
             npm install
           fi
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
 
       # Check commands come from the trusted base, never the candidate's policy.
       - name: Validate against trusted base

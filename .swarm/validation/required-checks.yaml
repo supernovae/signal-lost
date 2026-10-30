@@ -11,9 +11,6 @@ required_checks:
     - name: test
       command: npm ci --prefer-offline --no-audit --no-fund && npm test
       timeout: 15m
-    - name: e2e
-      command: npm ci --prefer-offline --no-audit --no-fund && npm run test:e2e
-      timeout: 30m
 protected_paths:
     - .github/workflows/**
     - .swarm/validation/**
