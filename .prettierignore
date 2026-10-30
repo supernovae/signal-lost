@@ -1,0 +1,11 @@
+dist/
+node_modules/
+test-results/
+playwright-report/
+package-lock.json
+.swarm/
+.claude/
+.opencode/
+.github/ISSUE_TEMPLATE/swarm-*.yml
+.github/workflows/swarm-validate.yml
+AGENTS.md

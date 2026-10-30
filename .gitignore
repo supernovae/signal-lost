@@ -3,3 +3,7 @@
 .swarm/active/
 .swarm/local-tracker/
 .swarm/coordination/
+node_modules/
+dist/
+test-results/
+playwright-report/

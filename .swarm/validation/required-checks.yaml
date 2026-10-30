@@ -1,13 +1,19 @@
 required_checks:
+    - name: format
+      command: npm ci --prefer-offline --no-audit --no-fund && npm run format:check
+      timeout: 5m
+    - name: lint
+      command: npm ci --prefer-offline --no-audit --no-fund && npm run lint
+      timeout: 5m
     - name: build
-      command: printf '%s\n' 'Configure project-specific required checks before approving work' >&2; exit 1
+      command: npm ci --prefer-offline --no-audit --no-fund && npm run build
       timeout: 5m
     - name: test
-      command: printf '%s\n' 'Configure project-specific required checks before approving work' >&2; exit 1
+      command: npm ci --prefer-offline --no-audit --no-fund && npm test
+      timeout: 15m
+    - name: e2e
+      command: npm ci --prefer-offline --no-audit --no-fund && npm run test:e2e
       timeout: 30m
-    - name: lint
-      command: printf '%s\n' 'Configure project-specific required checks before approving work' >&2; exit 1
-      timeout: 5m
 protected_paths:
     - .github/workflows/**
     - .swarm/validation/**
