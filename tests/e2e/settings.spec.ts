@@ -24,7 +24,7 @@ async function viewscreenChanges(page: Page): Promise<boolean> {
   const first = await view.screenshot();
   await page.waitForTimeout(1000);
   const second = await view.screenshot();
-  await overlays.evaluate((element) => element.remove());
+  await overlays.evaluate((element) => (element as unknown as HTMLElement).remove());
   return !first.equals(second);
 }
 
