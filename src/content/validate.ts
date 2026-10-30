@@ -159,6 +159,7 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
     record.grants.forEach((g) => granted.add(g));
   }
   content.sectors.forEach((s) => s.grantsOnEnter.forEach((g) => granted.add(g)));
+  content.artifacts.forEach((a) => a.grantsOnOpen.forEach((g) => granted.add(g)));
 
   const checkFact = (fact: string, record: object, field: string, isGrant: boolean): void => {
     const { file, prefix } = sources.get(record)!;
@@ -195,6 +196,9 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
   }
   for (const record of [...content.transmissions, ...content.archives, ...content.artifacts]) {
     checkCondition(record.requires, record, 'requires');
+  }
+  for (const artifact of content.artifacts) {
+    artifact.grantsOnOpen.forEach((g, i) => checkFact(g, artifact, `grantsOnOpen.${i}`, true));
   }
   for (const character of content.characters) {
     character.lines.forEach((line, i) => {

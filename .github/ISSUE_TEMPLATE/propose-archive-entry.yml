@@ -1,0 +1,51 @@
+name: File an archive entry
+description: Add a message, log or record to the DEEP FIELD BBS. No code needed.
+title: 'Archive entry: '
+labels: ['swarm:community']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An archive entry is an old message or record the player can read. Tired volunteers, odd logs and small human moments are all welcome. Everything is reviewed before it reaches the game.
+  - type: input
+    id: archive-title
+    attributes:
+      label: Subject line
+      placeholder: my computer found nothing again
+    validations:
+      required: true
+  - type: input
+    id: archive-from
+    attributes:
+      label: Who wrote it, in the story?
+      placeholder: NIGHTSHIFT
+    validations:
+      required: true
+  - type: input
+    id: archive-date
+    attributes:
+      label: In-world date
+      description: The network's story runs from about 1997 to 2003.
+      placeholder: 2000-04-12
+    validations:
+      required: true
+  - type: textarea
+    id: archive-body
+    attributes:
+      label: The message
+    validations:
+      required: true
+  - type: input
+    id: archive-credit
+    attributes:
+      label: How should we credit you?
+      description: The name shown in the game as FILED BY. Leave blank to use your GitHub handle.
+    validations:
+      required: false
+  - type: checkboxes
+    id: archive-original
+    attributes:
+      label: Original work
+      options:
+        - label: I wrote this, or have the right to contribute it under this project's MIT license.
+          required: true

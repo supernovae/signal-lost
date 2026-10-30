@@ -300,6 +300,28 @@
         "ECHO: That panel isn't in any of my records. Either copy.",
         "ECHO: Which means someone put it there on purpose, and did not tell me. I find I'm pleased."
       ]
+    },
+    {
+      "id": "echo.forge.opened",
+      "kind": "reaction",
+      "when": "flag:forge-opened",
+      "once": true,
+      "priority": 8,
+      "text": [
+        "ECHO: I looked up that filing office. It isn't in my records under any heading.",
+        "ECHO: It isn't a place in my world, Observer. I think it may be one in yours."
+      ]
+    },
+    {
+      "id": "echo.community.read",
+      "kind": "reaction",
+      "when": "read:community.second-line",
+      "once": true,
+      "priority": 9,
+      "text": [
+        "ECHO: I have every message ever posted to Deep Field. Both copies.",
+        "ECHO: I did not have that one. Nobody I remember wrote it. It is signed, and someone checked it, and it is here anyway."
+      ]
     }
   ]
 }

@@ -1,0 +1,41 @@
+{
+  "id": "community.first-light",
+  "title": "First Light",
+  "attribution": {
+    "author": "SIGNAL//LOST maintainers",
+    "handle": "supernovae"
+  },
+  "provenance": "Ships with the game as the example of a community package. See docs/content-authoring.md.",
+  "transmissions": [
+    {
+      "id": "tx.first-light",
+      "title": "TX-C01  FIRST LIGHT",
+      "requires": "flag:service-panel-open",
+      "body": [
+        "RECEIVED ON THE SECOND LINE. NOT FROM THE SKY.",
+        "",
+        "IF YOU ARE READING THIS, THE PANEL IS OPEN.",
+        "SOMEBODY WROTE THIS, ON PURPOSE, AND SOMEBODY ELSE CHECKED IT.",
+        "THERE IS ROOM FOR MORE."
+      ]
+    }
+  ],
+  "archives": [
+    {
+      "id": "community.second-line",
+      "board": "SECOND-LINE",
+      "title": "IS ANYONE ELSE ON THIS LINE",
+      "from": "UNLISTED",
+      "date": "UNDATED",
+      "requires": "flag:service-panel-open",
+      "keywords": ["second", "line", "forge"],
+      "body": [
+        "This board isn't in the index. I don't know how long it's been here.",
+        "",
+        "Keel's note says to leave a message. So: hello. I found the panel. The list of who has been here is short, and it is signed.",
+        "",
+        "Add to it."
+      ]
+    }
+  ]
+}

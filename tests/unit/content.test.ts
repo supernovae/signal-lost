@@ -310,6 +310,15 @@ describe('diagnostics', () => {
     expect(firstError(files)).toMatchObject({ file: 'content/sectors/s.json', field: 'puzzle' });
   });
 
+  it('reports an artifact granting a fact about an unknown record', () => {
+    const files = validFiles();
+    Object.assign(files['content/artifacts/a.json'] as object, { grantsOnOpen: ['read:ghost'] });
+    expect(firstError(files)).toMatchObject({
+      file: 'content/artifacts/a.json',
+      field: 'grantsOnOpen.0',
+    });
+  });
+
   it('reports files outside known directories', () => {
     expect(firstError({ 'content/mystery/x.json': {} }).field).toBe('(file)');
   });

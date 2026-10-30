@@ -1,0 +1,31 @@
+{
+  "id": "forge",
+  "name": "FORGE",
+  "requires": "flag:service-panel-open",
+  "grantsOnOpen": ["flag:forge-opened"],
+  "description": [
+    "FORGE. WIRED IN BY HAND. NO PART NUMBER.",
+    "",
+    "THIS NETWORK ACCEPTS NEW TRANSMISSIONS. IT ALWAYS DID.",
+    "THAT IS WHAT THE SECOND LINE WAS FOR.",
+    "",
+    "A TRANSMISSION MUST BE SIGNED BY WHOEVER FILED IT.",
+    "NOTHING IS ADDED UNTIL ANOTHER OBSERVER HAS READ IT.",
+    "",
+    "LOCAL WRITE: DENIED. THIS TERMINAL ONLY KNOWS WHERE THE FILING OFFICE IS."
+  ],
+  "links": [
+    {
+      "label": "FILE A TRANSMISSION",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-transmission.yml"
+    },
+    {
+      "label": "FILE AN ARCHIVE ENTRY",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-archive-entry.yml"
+    },
+    {
+      "label": "THE FILING OFFICE",
+      "url": "https://github.com/supernovae/signal-lost"
+    }
+  ]
+}
