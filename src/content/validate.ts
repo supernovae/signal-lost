@@ -197,7 +197,17 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
     checkCondition(record.requires, record, 'requires');
   }
   for (const character of content.characters) {
-    character.lines.forEach((line, i) => checkCondition(line.when, character, `lines.${i}.when`));
+    character.lines.forEach((line, i) => {
+      checkCondition(line.when, character, `lines.${i}.when`);
+      if (line.failures && !ids.puzzles.has(line.failures.puzzle)) {
+        const { file } = sources.get(character)!;
+        errors.push({
+          file,
+          field: `lines.${i}.failures.puzzle`,
+          message: `unknown puzzle "${line.failures.puzzle}"`,
+        });
+      }
+    });
   }
   for (const sector of content.sectors) {
     checkCondition(sector.visibleWhen, sector, 'visibleWhen');
