@@ -1,0 +1,34 @@
+{
+  "id": "puzzle.pattern",
+  "kind": "raster",
+  "title": "THE PATTERN",
+  "requires": "solved:puzzle.carrier",
+  "briefing": [
+    "DECODER ONLINE. TX-001 LOADED: 91 BITS, ON-OFF KEYED, NO FRAMING.",
+    "STACK THE BITS INTO ROWS. IF SOMETHING APPEARS, ENTER WHAT IT REFERS TO."
+  ],
+  "bits": "0000000000000010000100111001000010001000111001000100001000100010000100010010100000000000000",
+  "solution": {
+    "width": 13,
+    "answer": "417"
+  },
+  "knownWrong": [
+    {
+      "answer": "714",
+      "feedback": [
+        "REFERENCE 7-1-4: NOT ASSIGNED. NO SUCH GRID HAS EVER BEEN SURVEYED.",
+        "WHOEVER PRINTED THAT TABLE MAY NOT BE THE LAST WORD ON IT."
+      ]
+    }
+  ],
+  "feedback": {
+    "width": ["THAT WIDTH SHOWS NOTHING WITH ANY STRUCTURE. THE FRAME MUST BE WHOLE ROWS."],
+    "answer": ["NO RELAY ANSWERS TO THAT REFERENCE. THE FIELD MANUAL DEFINES SURVEY MARKS."]
+  },
+  "grants": ["acquired:tx.grid"],
+  "success": [
+    "REFERENCE ACCEPTED: GRID 4-1-7.",
+    "THE PUBLIC NETWORK MAP HAS NO RELAY AT THIS GRID.",
+    "THE MESSAGE BASE WILL TAKE A QUERY FOR IT."
+  ]
+}

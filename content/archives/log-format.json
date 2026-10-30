@@ -1,0 +1,16 @@
+{
+  "id": "ops.log-format",
+  "board": "OPS",
+  "title": "RE: WHY ARE THE RELAY DATES WRONG",
+  "from": "TKEEL",
+  "date": "1999-03-02",
+  "requires": "solved:puzzle.carrier",
+  "keywords": ["dates", "log", "format", "yyddd"],
+  "body": [
+    "They aren't wrong. Station clocks log two digits of year and then the day of the year. 99001 is 1 January 1999.",
+    "",
+    "If you can't count on your fingers: in a normal year, 1 November is day 305. Please stop mailing me about this.",
+    "",
+    "- TK"
+  ]
+}

@@ -4,13 +4,13 @@ import type { Scene } from './scenes.ts';
 export interface Tool {
   id: string;
   label: string;
-  run(terminal: Terminal): void;
+  run(terminal: Terminal, refresh: () => void): void;
 }
 
 export function createHub(
   root: HTMLElement,
   boot: readonly string[],
-  tools: readonly Tool[],
+  tools: () => readonly Tool[],
 ): Scene {
   let terminal: Terminal | undefined;
   return {
@@ -19,16 +19,20 @@ export function createHub(
       const active = createTerminal(root);
       terminal = active;
       active.print(boot);
-      active.menu(
-        tools.map((tool, index) => ({
-          key: String(index + 1),
-          label: tool.label,
-          run() {
-            active.closePanel();
-            tool.run(active);
-          },
-        })),
-      );
+      const refresh = (): void => {
+        active.menu(
+          tools().map((tool, index) => ({
+            key: String(index + 1),
+            label: tool.label,
+            run() {
+              active.closePanel();
+              tool.run(active, refresh);
+              refresh();
+            },
+          })),
+        );
+      };
+      refresh();
       active.onCommand((command) => {
         active.print([`UNKNOWN COMMAND: ${command}. TYPE A TOOL NUMBER OR NAME.`], 'alert');
       });

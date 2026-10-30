@@ -1,0 +1,16 @@
+{
+  "id": "press.release",
+  "board": "ANNOUNCE",
+  "title": "NETWORK REPORTS CANDIDATE SIGNAL",
+  "from": "PROJECT OFFICE",
+  "date": "2001-03-14",
+  "requires": "solved:puzzle.carrier",
+  "keywords": ["press", "discovery", "official"],
+  "body": [
+    "FOR IMMEDIATE RELEASE.",
+    "",
+    "VOLUNTEERS OF THE OBSERVER NETWORK TODAY REPORTED THE FIRST DETECTION OF A CANDIDATE NARROWBAND SIGNAL, RECEIVED ON 14 MARCH 2001.",
+    "",
+    "\"THIS IS WHAT 40,000 SPARE COMPUTERS CAN DO,\" SAID DIRECTOR DR. MARIT OYELARAN. \"WE ARE PROUD TO SAY NOBODY HAS EVER SEEN THIS BEFORE.\""
+  ]
+}

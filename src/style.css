@@ -236,7 +236,7 @@ body[data-tool='open'] #viewscreen {
 }
 
 body[data-tool='open'] .terminal-log {
-  flex: 0 1 25%;
+  flex: 0 0 16%;
   padding-right: 0;
 }
 
@@ -264,6 +264,86 @@ body[data-tool='open'] .terminal-log {
 
 .settings input[type='checkbox'] {
   accent-color: var(--phosphor);
+}
+
+.raster {
+  flex: 1;
+  margin: 0;
+  min-height: 7rem;
+  overflow: auto;
+  line-height: 1.05;
+  letter-spacing: 0.25em;
+  font-size: clamp(1rem, 3.2vh, 1.7rem);
+  text-shadow: 0 0 6px #ffb34766;
+}
+
+.decoder-form,
+.archive-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+}
+
+.decoder-form label,
+.archive-search label,
+.inquiry label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tool-panel input:not([type]),
+.inquiry select {
+  background: #000;
+  color: var(--phosphor);
+  border: 1px solid var(--phosphor-dim);
+  font: inherit;
+  padding: 0.1rem 0.4rem;
+  text-transform: uppercase;
+}
+
+.archive-results {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-height: 24%;
+  flex: none;
+  overflow-y: auto;
+}
+
+.archive-results button {
+  border: 0;
+  background: none;
+  text-align: left;
+  white-space: pre;
+  padding: 0 0.3rem;
+}
+
+.archive-results button:hover {
+  background: #ffb34726;
+}
+
+.archive-reader {
+  flex: 1;
+  min-height: 6rem;
+  overflow-y: auto;
+  border-top: 1px solid var(--phosphor-dim);
+  padding-top: 0.4rem;
+}
+
+.archive-reader h3 {
+  font: inherit;
+  margin: 0;
+}
+
+.inquiry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
 }
 
 .tool-panel[hidden] {
@@ -321,6 +401,30 @@ body[data-tool='open'] .terminal-log {
 .analyzer-readout {
   flex: 1 1 22rem;
   white-space: pre;
+}
+
+body[data-scene='ending'] .crt {
+  --ending-veil: #050914b3;
+}
+
+.ending {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(1rem, 4vmin, 3rem);
+  background: linear-gradient(90deg, #050914e6 0 70%, #05091400);
+}
+
+.ending [role='log'] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ending button {
+  align-self: flex-start;
 }
 
 @media (max-width: 40rem) {

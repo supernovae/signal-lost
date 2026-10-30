@@ -1,0 +1,10 @@
+{
+  "id": "tx.grid",
+  "title": "TX-002  GRID REFERENCE",
+  "requires": "acquired:tx.grid",
+  "body": [
+    "TX-001, STACKED AT 13: THREE SURVEY MARKS.",
+    "GRID 4-1-7.",
+    "NOT ON THE PUBLIC MAP. NOT ON ANY MAP THIS CLIENT HAS BEEN GIVEN."
+  ]
+}

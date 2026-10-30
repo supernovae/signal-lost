@@ -1,0 +1,22 @@
+{
+  "id": "relay07.ledger",
+  "board": "RELAY-07",
+  "title": "UTILITY LEDGER, GRID 4-1-7",
+  "from": "ACCOUNTS PAYABLE",
+  "date": "2000-2003",
+  "requires": "solved:puzzle.pattern",
+  "searchOnly": true,
+  "keywords": ["417"],
+  "body": [
+    "STATUS PER PROJECT OFFICE, 2001-03-01: DECOMMISSIONED.",
+    "",
+    "QUARTER   KWH    NOTE",
+    "2000 Q4   1,412",
+    "2001 Q1   1,405",
+    "2001 Q2   1,407  QUERY RAISED: SITE IS CLOSED?",
+    "2001 Q3   1,411  REPLY: PAY IT.",
+    "2001 Q4   1,409",
+    "2002 Q1   1,406  READING CONFIRMED ON SITE. METER TURNING.",
+    "2003 Q2   1,410  ACCOUNT MOVED TO STANDING ORDER."
+  ]
+}

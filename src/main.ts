@@ -1,14 +1,16 @@
+import { createEnding } from './app/ending.ts';
 import { createHub, type Tool } from './app/hub.ts';
 import { createOpening } from './app/opening.ts';
 import { applyPreferences, effectiveMotion, openSettings } from './app/settings.ts';
 import { createSceneManager } from './app/scenes.ts';
+import { buildTools } from './app/tools.ts';
 import { loadBundledContent } from './content/browser.ts';
+import type { Episode } from './content/schema.ts';
 import { createAudio } from './audio/audio.ts';
 import { createScriptedDialogue } from './narrative/dialogue.ts';
 import { loadSave, resetSave, writeSave } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
 import { createRenderHost } from './render/host.ts';
-import { openAnalyzer } from './signal/analyzer-view.ts';
 import './style.css';
 
 const root = document.querySelector<HTMLElement>('#app')!;
@@ -53,11 +55,14 @@ const renderHost = createRenderHost(
 window.addEventListener('pagehide', () => renderHost.dispose());
 applySettings();
 
-const tools: Tool[] = [
+const utilities: Tool[] = [
   {
     id: 'status',
     label: 'STATUS',
-    run: (terminal) => terminal.print(['LINK: ONE-WAY', 'OBSERVERS ONLINE: 1'], 'dim'),
+    run(terminal) {
+      const designation = data.designation ? [`DESIGNATION: ${data.designation}`] : [];
+      terminal.print(['LINK: ONE-WAY', 'OBSERVERS ONLINE: 1', ...designation], 'dim');
+    },
   },
   {
     id: 'settings',
@@ -85,50 +90,27 @@ const tools: Tool[] = [
   },
 ];
 
-tools.unshift({
-  id: 'echo',
-  label: 'ECHO',
-  run(terminal) {
-    const line = game.say(echo, 'hint') ?? game.say(echo, 'idle');
-    if (line) terminal.print(line.text);
-  },
-});
-
-for (const puzzle of content.puzzles) {
-  if (puzzle.kind !== 'carrier') continue;
-  tools.unshift({
-    id: puzzle.id,
-    label: 'ANALYZER',
-    run(terminal) {
-      if (game.isSolved(puzzle.id)) {
-        terminal.print(puzzle.success, 'dim');
-        return;
-      }
-      terminal.print(puzzle.briefing);
-      openAnalyzer(
-        terminal.openPanel(),
-        puzzle,
-        ({ outcome }) => {
-          const result = game.attempt(puzzle.id, { kind: 'carrier', outcome });
-          terminal.print(result.feedback, result.status === 'solved' ? 'normal' : 'alert');
-          audio.play(result.status === 'solved' ? 'success' : 'error');
-          if (result.status === 'solved') {
-            terminal.closePanel();
-            const reaction = game.say(echo, 'reaction');
-            if (reaction) terminal.print(reaction.text);
-          }
-        },
-        () => audio.play('interference'),
-      );
-    },
-  });
-}
-
 const scenes = createSceneManager();
+const motionAllowed = (): boolean => effectiveMotion(data.preferences, systemReduced);
+const showHub = (): void => {
+  scenes.show(createHub(root, screen('boot'), () => buildTools(toolContext)));
+};
+const toolContext = {
+  content,
+  game,
+  audio,
+  echo,
+  utilities,
+  onEpisodeComplete(episode: Episode) {
+    const footer = [`OBSERVER DESIGNATION ASSIGNED: ${data.designation ?? ''}`];
+    scenes.show(createEnding(root, episode.ending, footer, motionAllowed(), showHub));
+  },
+};
+
 scenes.show(
   createOpening(root, screen('opening'), () => {
     audio.unlock();
     audio.play('startup');
-    scenes.show(createHub(root, screen('boot'), tools));
+    showHub();
   }),
 );

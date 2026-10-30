@@ -1,0 +1,11 @@
+{
+  "id": "tx.fragment",
+  "title": "TX-001  FRAGMENT",
+  "requires": "acquired:tx.fragment",
+  "body": [
+    "CAPTURE: 1421.37 MHZ, DRIFT -0.42 HZ/S",
+    "91 BITS. NO HEADER. NO CHECKSUM.",
+    "",
+    "0000000000 0000100001 0011100100 0010001000 1110010001 0000100010 0010000100 0100101000 0000000000 0"
+  ]
+}
