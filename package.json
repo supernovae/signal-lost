@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "content:validate": "node scripts/validate-content.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint . && tsc --noEmit",
