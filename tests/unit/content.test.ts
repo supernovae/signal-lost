@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { build } from 'vite';
@@ -275,19 +283,27 @@ describe('entry points', () => {
   afterEach(() => {
     roots.splice(0).forEach((r) => rmSync(r, { recursive: true, force: true }));
   });
-  const cli = (root: string) =>
-    spawnSync(process.execPath, ['scripts/validate-content.ts', root], { encoding: 'utf8' });
+  // Output goes through files: stdio pipes lose data in the validation sandbox.
+  const cli = (root: string) => {
+    const log = join(root, 'cli.log');
+    const fd = openSync(log, 'w');
+    const { status } = spawnSync(process.execPath, ['scripts/validate-content.ts', root], {
+      stdio: ['ignore', fd, fd],
+    });
+    closeSync(fd);
+    return { status, output: readFileSync(log, 'utf8') };
+  };
 
   it('the CLI exits 0 on valid content', () => {
     const result = cli(tree('t.json', { id: 't', title: 'T', body: [] }));
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Content OK: 1 records');
+    expect(result.output).toContain('Content OK: 1 records');
   });
 
   it('the CLI exits 1 and names the file and field on invalid content', () => {
     const result = cli(tree('t.json', { id: 't', title: 'T' }));
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('content/transmissions/t.json: body:');
+    expect(result.output).toContain('content/transmissions/t.json: body:');
   });
 
   it('the build rejects invalid content', async () => {
