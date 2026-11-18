@@ -8,7 +8,7 @@ import { loadBundledContent } from './content/browser.ts';
 import type { Episode } from './content/schema.ts';
 import { createAudio } from './audio/audio.ts';
 import { createScriptedDialogue } from './narrative/dialogue.ts';
-import { loadSave, resetSave, writeSave } from './progress/save.ts';
+import { loadSave } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
 import { createRenderHost } from './render/host.ts';
 import './style.css';
@@ -19,12 +19,13 @@ const { content } = loadBundledContent();
 const screen = (id: string): readonly string[] =>
   content.screens.find((s) => s.id === id)?.lines ?? [];
 
-const { data } = loadSave(localStorage);
+const session = loadSave(localStorage);
+const { data, status } = session;
 const game = createGame({
   content,
   data,
-  persist: (latest) => writeSave(localStorage, latest),
-  designationSeed: () => crypto.getRandomValues(new Uint32Array(1))[0]!,
+  persist: () => session.persist(),
+  designationSeed: () => data.profile.seed,
 });
 const echo = createScriptedDialogue(content.characters.find((c) => c.id === 'echo')!);
 
@@ -60,8 +61,12 @@ const utilities: Tool[] = [
     id: 'status',
     label: 'STATUS',
     run(terminal) {
-      const designation = data.designation ? [`DESIGNATION: ${data.designation}`] : [];
-      terminal.print(['LINK: ONE-WAY', 'OBSERVERS ONLINE: 1', ...designation], 'dim');
+      const { handle, designation, accessLevel } = data.profile;
+      const lines = ['LINK: ONE-WAY', 'OBSERVERS ONLINE: 1'];
+      if (handle) lines.push(`HANDLE: ${handle}`);
+      if (accessLevel) lines.push(`ACCESS LEVEL: ${accessLevel}`);
+      if (designation) lines.push(`DESIGNATION: ${designation}`);
+      terminal.print(lines, 'dim');
     },
   },
   {
@@ -72,12 +77,11 @@ const utilities: Tool[] = [
         preferences: data.preferences,
         systemReduced,
         onChange() {
-          writeSave(localStorage, data);
+          session.persist();
           applySettings();
         },
         onReset() {
-          resetSave(localStorage);
-          window.location.reload();
+          if (session.clear()) window.location.reload();
         },
         onClose: () => terminal.closePanel(),
       });
@@ -92,8 +96,14 @@ const utilities: Tool[] = [
 
 const scenes = createSceneManager();
 const motionAllowed = (): boolean => effectiveMotion(data.preferences, systemReduced);
+let pendingResetNotice = status === 'reset';
 const showHub = (): void => {
-  scenes.show(createHub(root, screen('boot'), () => buildTools(toolContext)));
+  const boot = pendingResetNotice ? [...screen('boot'), ...screen('save-reset')] : screen('boot');
+  if (pendingResetNotice) {
+    pendingResetNotice = false;
+    session.persist();
+  }
+  scenes.show(createHub(root, boot, () => buildTools(toolContext)));
 };
 const toolContext = {
   content,
@@ -102,7 +112,7 @@ const toolContext = {
   echo,
   utilities,
   onEpisodeComplete(episode: Episode) {
-    const footer = [`OBSERVER DESIGNATION ASSIGNED: ${data.designation ?? ''}`];
+    const footer = [`OBSERVER DESIGNATION ASSIGNED: ${data.profile.designation ?? ''}`];
     scenes.show(createEnding(root, episode.ending, footer, motionAllowed(), showHub));
   },
 };

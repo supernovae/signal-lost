@@ -56,10 +56,10 @@ export function createGame({ content, data, persist, designationSeed }: GameOpti
       if (data.episodes.includes(episode.id)) continue;
       if (!episode.puzzles.every((id) => data.puzzles.includes(id))) continue;
       added.push(...grant([`completed:${episode.id}`, ...episode.grants]));
-      if (data.designation === null) {
+      if (data.profile.designation === null) {
         const suffix = Math.floor(mulberry32(designationSeed())() * 0xffff);
         const hex = suffix.toString(16).toUpperCase().padStart(4, '0');
-        data.designation = `${episode.designationPrefix}-${hex}`;
+        data.profile.designation = `${episode.designationPrefix}-${hex}`;
       }
     }
     return added;

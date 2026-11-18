@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "puzzles": ["puzzle.carrier", "puzzle.pattern", "puzzle.archive", "puzzle.service"],
+  "transmissions": ["tx.fragment", "tx.grid", "tx.reconstructed"],
+  "archives": ["manual.rev-c"],
+  "locations": ["relay-07"],
+  "episodes": ["episode.000"],
+  "flags": ["service-panel-open", "forge-opened"],
+  "seenLines": ["echo.carrier.solved"],
+  "failures": {
+    "puzzle.carrier": 1
+  },
+  "preferences": {
+    "muted": true,
+    "reducedMotion": true,
+    "effects": false
+  },
+  "designation": "OBS-02FF"
+}

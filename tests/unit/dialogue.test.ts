@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { characterSchema, puzzleSchema, type Character } from '../../src/content/schema.ts';
 import { createScriptedDialogue } from '../../src/narrative/dialogue.ts';
-import { freshSave, loadSave, writeSave } from '../../src/progress/save.ts';
-import { createGame } from '../../src/puzzle/game.ts';
+import { loadSave, type SaveSession } from '../../src/progress/save.ts';
+import { createGame, type Game } from '../../src/puzzle/game.ts';
 import { emptyContent } from './helpers.ts';
 
 const character: Character = characterSchema.parse({
@@ -83,19 +83,19 @@ describe('dialogue memory', () => {
       feedback: [],
     });
     const content = { ...emptyContent(), puzzles: [puzzle] };
-    const play = (data = freshSave()) =>
+    const play = (session: SaveSession): Game =>
       createGame({
         content,
-        data,
-        persist: (latest) => writeSave(storage, latest),
+        data: session.data,
+        persist: () => session.persist(),
         designationSeed: () => 1,
       });
 
-    const game = play();
+    const game = play(loadSave(storage));
     game.attempt('p', { kind: 'code', code: '1' });
     expect(game.say(source, 'reaction')?.id).toBe('react');
 
-    const reloaded = play(loadSave(storage).data);
+    const reloaded = play(loadSave(storage));
     expect(reloaded.isSolved('p')).toBe(true);
     expect(reloaded.say(source, 'reaction')).toBeUndefined();
   });
