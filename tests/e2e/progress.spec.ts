@@ -7,14 +7,11 @@ const RESET_NOTICE = 'YOUR SAVED PROGRESS COULD NOT BE LOADED AND WAS RESET.';
 
 /** Seeds storage once per case: an init script alone would re-seed on reload. */
 async function seedSave(page: Page, blob: string): Promise<void> {
-  await page.addInitScript(
-    (value) => {
-      if (localStorage.getItem('signal-lost.save') === null) {
-        localStorage.setItem('signal-lost.save', value);
-      }
-    },
-    blob,
-  );
+  await page.addInitScript((value) => {
+    if (localStorage.getItem('signal-lost.save') === null) {
+      localStorage.setItem('signal-lost.save', value);
+    }
+  }, blob);
 }
 
 async function lockCarrier(page: Page): Promise<void> {
