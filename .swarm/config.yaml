@@ -17,7 +17,7 @@ execution:
   mode: isolated
   backend: native
 lease:
-  duration: 4h
+  duration: 8h
   renewable: true
   max_renewals: 3
 security:
