@@ -56,12 +56,11 @@ agents:
     binary: opencode
   omp:
     binary: omp
+  codex-plan: {harness: codex, binary: codex, model: gpt-6.2-sol, effort: high}
+  codex-test: {harness: codex, binary: codex, model: gpt-6.1-terra, effort: medium}
+  opencode-go: {harness: opencode, binary: opencode, model: opencode-go/glm-5.3}
 roles:
   planner: codex-plan
   reviewer: claude
   developer: opencode-go
   tester: codex-test
-agents:
-  codex-plan: {harness: codex, binary: codex, model: gpt-6.2-sol, effort: high}
-  codex-test: {harness: codex, binary: codex, model: gpt-6.1-terra, effort: medium}
-  opencode-go: {harness: opencode, binary: opencode, model: opencode-go/glm-5.3}
