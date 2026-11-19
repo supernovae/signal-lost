@@ -3,7 +3,7 @@
 version: 1
 # Linux isolation: Codex native sandbox; other harnesses use isolated tools.
 # Run swarm repo doctor before work. Models are optional; each harness chooses its default.
-default_agent: opencode
+default_agent: codex
 default_gate: agent
 plan_mode: auto
 # Checkpoint commit messages: concise (default) or detailed.
@@ -59,8 +59,9 @@ agents:
   codex-plan: {harness: codex, binary: codex, model: gpt-6.2-sol, effort: high}
   codex-test: {harness: codex, binary: codex, model: gpt-6.1-terra, effort: medium}
   opencode-go: {harness: opencode, binary: opencode, model: opencode-go/glm-5.3}
+  codex-developer: {harness: codex, binary: codex, model: gpt-6.2-sol, effort: high}
 roles:
   planner: codex-plan
   reviewer: claude
-  developer: opencode-go
+  developer: codex-developer
   tester: codex-test
