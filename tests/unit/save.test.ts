@@ -228,6 +228,27 @@ describe('save data', () => {
     expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { status: 'new', initial: null },
+    { status: 'migrated', initial: completedV1 },
+    { status: 'reset', initial: '{ corrupt' },
+  ])(
+    'preserves a future save that appears before the automatic $status write',
+    ({ status, initial }) => {
+      const future = ' { "schemaVersion": 3, "future": true }\n';
+      const storage = memoryStorage(future);
+      storage.getItem.mockReturnValueOnce(initial);
+
+      const session = openSaveSession(storage, seed);
+
+      expect(session.status).toBe(status);
+      expect(session.data.profile.seed).toBe(123);
+      expect(storage.value).toBe(future);
+      expect(storage.setItem).not.toHaveBeenCalled();
+      expect(storage.removeItem).not.toHaveBeenCalled();
+    },
+  );
+
   it('clears progress on a deliberate reset', () => {
     const storage = memoryStorage();
     const session = openSaveSession(storage, seed);
