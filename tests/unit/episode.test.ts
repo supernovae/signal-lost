@@ -185,10 +185,10 @@ describe('the ending', () => {
     expect(game.transmissions().map((t) => t.id)).toContain('tx.reconstructed');
   });
 
-  it('replays progress from the verified Episode 000 v1 fixture using bundled content', () => {
-    // The coordinator reproduced this fixture with createGame and writeSave from approved base
-    // 7848402005aa8b5f751157a0192a383bf0b38b95. The serialized output matched it byte for byte.
-    // This replay compares the resulting progress and designation using the current game.
+  it('replays Episode 000 against the fixture verified with the original v1 writer', () => {
+    // The coordinator ran the original createGame and writeSave at approved base
+    // 7848402005aa8b5f751157a0192a383bf0b38b95 and reproduced the fixture's parsed data exactly.
+    // This test uses the current game to compare the resulting progress and designation.
     const fixture = JSON.parse(
       readFileSync(new URL('../fixtures/episode-000-complete-v1.json', import.meta.url), 'utf8'),
     );
