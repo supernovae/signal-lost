@@ -25,10 +25,10 @@ const ANSWERS = {
 } as const;
 
 function newGame() {
-  const data = freshSave();
+  const data = freshSave(7);
   return {
     data,
-    game: createGame({ content, data, persist: () => {}, designationSeed: () => 7 }),
+    game: createGame({ content, data, persist: () => {} }),
   };
 }
 
@@ -177,7 +177,7 @@ describe('the ending', () => {
     const result = game.attempt('puzzle.archive', ANSWERS.archive);
     expect(result.status).toBe('solved');
     expect(result.granted).toContain('completed:episode.000');
-    expect(data.designation).toMatch(/^OBS-[0-9A-F]{4}$/);
+    expect(data.profile.designation).toMatch(/^OBS-[0-9A-F]{4}$/);
     expect(game.transmissions().map((t) => t.id)).toContain('tx.reconstructed');
   });
 

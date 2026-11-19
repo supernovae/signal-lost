@@ -17,8 +17,6 @@ export interface GameOptions {
   content: Content;
   data: SaveData;
   persist(data: SaveData): void;
-  /** Cosmetic: picks the Observer designation's suffix. */
-  designationSeed(): number;
 }
 
 export interface Game {
@@ -36,7 +34,7 @@ export interface Game {
   archives(): Content['archives'];
 }
 
-export function createGame({ content, data, persist, designationSeed }: GameOptions): Game {
+export function createGame({ content, data, persist }: GameOptions): Game {
   const puzzle = (id: string): Puzzle => {
     const found = content.puzzles.find((p) => p.id === id);
     if (!found) throw new Error(`unknown puzzle ${id}`);
@@ -56,10 +54,10 @@ export function createGame({ content, data, persist, designationSeed }: GameOpti
       if (data.episodes.includes(episode.id)) continue;
       if (!episode.puzzles.every((id) => data.puzzles.includes(id))) continue;
       added.push(...grant([`completed:${episode.id}`, ...episode.grants]));
-      if (data.designation === null) {
-        const suffix = Math.floor(mulberry32(designationSeed())() * 0xffff);
+      if (data.profile.designation === null) {
+        const suffix = Math.floor(mulberry32(data.profile.seed)() * 0xffff);
         const hex = suffix.toString(16).toUpperCase().padStart(4, '0');
-        data.designation = `${episode.designationPrefix}-${hex}`;
+        data.profile.designation = `${episode.designationPrefix}-${hex}`;
       }
     }
     return added;

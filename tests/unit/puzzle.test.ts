@@ -74,8 +74,8 @@ const byId = (id: string): Puzzle => content.puzzles.find((p) => p.id === id)!;
 
 function newGame(contentSet: Content = content) {
   const persist = vi.fn();
-  const data = freshSave();
-  const game = createGame({ content: contentSet, data, persist, designationSeed: () => 42 });
+  const data = freshSave(42);
+  const game = createGame({ content: contentSet, data, persist });
   return { game, data, persist };
 }
 
@@ -166,16 +166,26 @@ describe('game', () => {
   it('completes an episode once, with a stable designation for a seed', () => {
     const { game, data } = newGame();
     game.attempt('raster', solveRaster);
-    expect(data.designation).toBeNull();
+    expect(data.profile.designation).toBeNull();
     const result = game.attempt('inquiry', solveInquiry);
     expect(result.granted).toContain('completed:e');
     expect(result.granted).toContain('flag:ended');
-    const designation = data.designation;
+    const designation = data.profile.designation;
     expect(designation).toMatch(/^OBS-[0-9A-F]{4}$/);
 
     const again = newGame();
     again.game.attempt('raster', solveRaster);
     again.game.attempt('inquiry', solveInquiry);
-    expect(again.data.designation).toBe(designation);
+    expect(again.data.profile.designation).toBe(designation);
+    expect(again.game.attempt('inquiry', solveInquiry).status).toBe('already-solved');
+    expect(again.data.episodes).toEqual(['e']);
+  });
+
+  it('keeps an existing designation when an episode is completed', () => {
+    const { game, data } = newGame();
+    data.profile.designation = 'OBS-0001';
+    game.attempt('raster', solveRaster);
+    expect(game.attempt('inquiry', solveInquiry).granted).toContain('completed:e');
+    expect(data.profile.designation).toBe('OBS-0001');
   });
 });
