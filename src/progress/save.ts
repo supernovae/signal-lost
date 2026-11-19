@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const SAVE_SCHEMA_VERSION = 1;
+export const SAVE_SCHEMA_VERSION = 2;
 const SAVE_KEY = 'signal-lost.save';
 
 const preferencesSchema = z.object({
@@ -9,8 +9,7 @@ const preferencesSchema = z.object({
   effects: z.boolean(),
 });
 
-const saveSchema = z.object({
-  schemaVersion: z.literal(SAVE_SCHEMA_VERSION),
+const globalSchema = z.object({
   puzzles: z.array(z.string()),
   transmissions: z.array(z.string()),
   archives: z.array(z.string()),
@@ -20,12 +19,44 @@ const saveSchema = z.object({
   seenLines: z.array(z.string()),
   failures: z.record(z.string(), z.number().int().nonnegative()),
   preferences: preferencesSchema,
+});
+
+const legacySchema = globalSchema.extend({
+  schemaVersion: z.literal(1),
   designation: z.string().nullable(),
 });
 
-export type SaveData = z.infer<typeof saveSchema>;
-export type SaveStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
-export type SaveStatus = 'new' | 'loaded' | 'migrated' | 'reset';
+const handleSchema = z
+  .string()
+  .nullable()
+  .transform((handle) => {
+    const trimmed = handle?.trim();
+    return trimmed ? Array.from(trimmed).slice(0, 32).join('').trimEnd() : null;
+  });
+
+const saveSchema = globalSchema.extend({
+  schemaVersion: z.literal(SAVE_SCHEMA_VERSION),
+  profile: z.object({
+    handle: handleSchema,
+    designation: z.string().nullable(),
+    accessLevel: z
+      .string()
+      .refine((level) => level.trim().length > 0)
+      .nullable(),
+    seed: z.number().int().min(0).max(0xffffffff),
+  }),
+});
+
+const jsonSchema = z.json();
+type DoorState = Record<string, z.infer<typeof jsonSchema>>;
+
+export type SaveData = z.infer<typeof saveSchema> & { doorState: DoorState };
+export interface SaveStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+export type SaveStatus = 'new' | 'loaded' | 'migrated' | 'reset' | 'unsupported';
 
 export const DEFAULT_PREFERENCES: SaveData['preferences'] = {
   muted: false,
@@ -34,7 +65,11 @@ export const DEFAULT_PREFERENCES: SaveData['preferences'] = {
   effects: true,
 };
 
-export function freshSave(): SaveData {
+function createSaveSeed(): number {
+  return globalThis.crypto.getRandomValues(new Uint32Array(1))[0]!;
+}
+
+export function freshSave(seed = createSaveSeed()): SaveData {
   return {
     schemaVersion: SAVE_SCHEMA_VERSION,
     puzzles: [],
@@ -46,62 +81,133 @@ export function freshSave(): SaveData {
     seenLines: [],
     failures: {},
     preferences: { ...DEFAULT_PREFERENCES },
-    designation: null,
+    profile: { handle: null, designation: null, accessLevel: null, seed },
+    doorState: {},
   };
 }
 
-/** Upgrades from an older schema version to the next. Version 0 had no preferences. */
-const MIGRATIONS: Record<number, (old: Record<string, unknown>) => Record<string, unknown>> = {
-  0: (old) => ({ ...old, schemaVersion: 1, preferences: { ...DEFAULT_PREFERENCES } }),
-};
-
-function migrate(raw: Record<string, unknown>): Record<string, unknown> | undefined {
-  let current = raw;
-  while (current['schemaVersion'] !== SAVE_SCHEMA_VERSION) {
-    const step = MIGRATIONS[current['schemaVersion'] as number];
-    if (!step) return undefined;
-    current = step(current);
-  }
-  return current;
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function loadSave(storage: SaveStorage): { data: SaveData; status: SaveStatus } {
+function parseStored(text: string | null): unknown {
+  try {
+    return text === null ? undefined : JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function isFutureSave(raw: unknown): boolean {
+  if (!isObject(raw)) return false;
+  const version = raw['schemaVersion'];
+  return typeof version === 'number' && Number.isInteger(version) && version > SAVE_SCHEMA_VERSION;
+}
+
+function decodeDoorState(raw: unknown): DoorState {
+  const slots: [string, DoorState[string]][] = [];
+  if (!isObject(raw)) return {};
+  for (const [id, text] of Object.entries(raw)) {
+    if (typeof text !== 'string') continue;
+    try {
+      const decoded = parseStored(text);
+      if (jsonSchema.safeParse(decoded).success) slots.push([id, decoded as DoorState[string]]);
+    } catch {
+      // A single slot may exceed the validator's recursion limit.
+    }
+  }
+  return Object.fromEntries(slots);
+}
+
+function encodeDoorState(doors: DoorState): Record<string, string> {
+  const slots: [string, string][] = [];
+  if (!isObject(doors)) return {};
+  for (const id of Object.keys(doors)) {
+    try {
+      const value = doors[id];
+      if (!jsonSchema.safeParse(value).success) continue;
+      const encoded = JSON.stringify(value);
+      if (typeof encoded === 'string') slots.push([id, encoded]);
+    } catch {
+      // A slot can contain a circular or otherwise unserializable value at runtime.
+    }
+  }
+  return Object.fromEntries(slots);
+}
+
+export function loadSave(
+  storage: SaveStorage,
+  seed: () => number = createSaveSeed,
+): { data: SaveData; status: SaveStatus } {
   let text: string | null;
   try {
     text = storage.getItem(SAVE_KEY);
   } catch {
-    return { data: freshSave(), status: 'new' };
+    text = null;
   }
-  if (text === null) return { data: freshSave(), status: 'new' };
-  try {
-    const raw = JSON.parse(text) as Record<string, unknown>;
-    const upgraded = migrate(raw);
-    const parsed = saveSchema.safeParse(upgraded);
-    if (!parsed.success) return { data: freshSave(), status: 'reset' };
-    const status = raw['schemaVersion'] === SAVE_SCHEMA_VERSION ? 'loaded' : 'migrated';
-    return { data: parsed.data, status };
-  } catch {
-    return { data: freshSave(), status: 'reset' };
+
+  if (text === null) return { data: freshSave(seed()), status: 'new' };
+  const raw = parseStored(text);
+  if (isFutureSave(raw)) return { data: freshSave(seed()), status: 'unsupported' };
+  if (isObject(raw)) {
+    const version = raw['schemaVersion'];
+    if (version === 0 || version === 1) {
+      // Version 0 had no preferences. Upgrade to the v1 shape before lifting to v2.
+      const legacy = legacySchema.safeParse(
+        version === 0 ? { ...raw, schemaVersion: 1, preferences: DEFAULT_PREFERENCES } : raw,
+      );
+      if (legacy.success) {
+        const { designation, ...global } = legacy.data;
+        const data: SaveData = {
+          ...global,
+          schemaVersion: SAVE_SCHEMA_VERSION,
+          profile: { handle: null, designation, accessLevel: null, seed: seed() },
+          doorState: {},
+        };
+        return { data, status: 'migrated' };
+      }
+    } else {
+      const parsed = saveSchema.safeParse(raw);
+      if (parsed.success) {
+        const data = { ...parsed.data, doorState: decodeDoorState(raw['doorState']) };
+        return { data, status: 'loaded' };
+      }
+    }
   }
+  return { data: freshSave(seed()), status: 'reset' };
 }
 
-/** Returns false when the browser refuses the write. Play continues either way. */
-export function writeSave(storage: SaveStorage, data: SaveData): boolean {
+function mutateSave(storage: SaveStorage, mutate: () => void): boolean {
   try {
-    storage.setItem(SAVE_KEY, JSON.stringify(data));
+    if (isFutureSave(parseStored(storage.getItem(SAVE_KEY)))) return false;
+    mutate();
     return true;
   } catch {
     return false;
   }
 }
 
-export function resetSave(storage: SaveStorage): SaveData {
-  try {
-    storage.removeItem(SAVE_KEY);
-  } catch {
-    // Nothing else to clear: the fresh save still applies to this session.
-  }
-  return freshSave();
+/** Returns false when storage refuses the write or holds a newer save. */
+export function writeSave(storage: SaveStorage, data: SaveData): boolean {
+  return mutateSave(storage, () => {
+    const { doorState, ...global } = data;
+    const validated = saveSchema.parse(global);
+    const encoded = { ...validated, doorState: encodeDoorState(doorState) };
+    storage.setItem(SAVE_KEY, JSON.stringify(encoded));
+  });
+}
+
+export function clearSave(storage: SaveStorage): boolean {
+  return mutateSave(storage, () => storage.removeItem(SAVE_KEY));
+}
+
+export function openSaveSession(storage: SaveStorage, seed?: () => number) {
+  const { data, status } = loadSave(storage, seed);
+  const persist = (): boolean => status !== 'unsupported' && writeSave(storage, data);
+  const clear = (): boolean => status !== 'unsupported' && clearSave(storage);
+
+  if (status === 'new' || status === 'migrated' || status === 'reset') persist();
+  return { data, status, persist, clear };
 }
 
 const FACT_FIELDS = {
