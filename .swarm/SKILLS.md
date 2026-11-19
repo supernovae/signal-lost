@@ -25,7 +25,7 @@ When working interactively on a single approved `WorkUnit` issue (using `/swarm-
    - For agent-gated tasks: `swarm issue review-plan <issue-number>`
    - For human-gated tasks: an independent maintainer runs `swarm issue review-plan <issue-number> --approve --notes "LGTM"`; `swarm issue approve` authorizes the WorkUnit but does not approve its implementation plan.
 5. **Implement, validate, and stage the checkpoint (`implement` phase)**:
-   - Implement the approved plan using developer-owned focused checks in TEST_PLAN.md. The tester independently reviews source and acceptance criteria and reuses applicable passing results; repeats need relevant source changes, observed failures or an unresolved coverage concern. The coordinator runs the complete trusted-base required policy once after roles finish. `.swarm/validation/required-checks.yaml` is a coordinator-owned reference, not a per-role execution list; agent results remain advisory and cannot satisfy claim-bound validation or publication.
+   - Implement the approved plan and run the developer-owned focused checks in TEST_PLAN.md; the tester then reviews source and acceptance criteria independently, reusing results that still apply. The coordinator runs the complete required policy once before publication, so `.swarm/validation/required-checks.yaml` is a coordinator-owned reference, not a per-role execution list.
    - Stage the implementation checkpoint and validation attestation:
      ```bash
      swarm issue stage '<issue-number>' --phase implement --harness '<harness-name>' --model '<model-name>'
@@ -40,29 +40,31 @@ When working interactively on a single approved `WorkUnit` issue (using `/swarm-
    - Use `swarm pr rebase <PR>` for ancestry changes; a newer base requires maintainer approval of the linked issue first.
    - Work in the separate reported PR worktree, satisfy the plan gate, then run `swarm pr validate <PR>` and `swarm pr submit <PR>` to update the same PR. Maintainers need upstream write access; contributors revise their own fork PRs by adding `--fork` (for example, `swarm --fork pr work <PR>`), and a maintainer approves the revised plan with `swarm issue review-plan <issue> --approve`.
 
-## 2. Repository-Wide Roadmap Ideation, Epics & Backlog Triage (`swarm repo plan`)
+## 2. Repository-Wide Roadmap Ideation, Parent Issues & Backlog Triage (`swarm repo plan`)
 
-Maintainers use `swarm repo plan` (with `/swarm-project-plan` in Claude Code / OpenCode, or by referencing `.swarm/skills/triage-and-plan.md` in regular prompts with Codex / `omp`) to turn repository-wide ideas into a reviewed plan file, a non-executable parent `Epic` issue, and linked draft child `WorkUnit` issues:
+Optional for organization repositories: use `swarm issue parent create --epic --title "Roadmap" --body-file ROADMAP.md` or `swarm repo plan --from ROADMAP.md --apply --epic` to request the Epic issue type. `swarm issue epic create` remains a compatibility alias for typed creation.
+
+Maintainers use `swarm repo plan` (with `/swarm-project-plan` in Claude Code / OpenCode, or by referencing `.swarm/skills/triage-and-plan.md` in regular prompts with Codex / `omp`) to turn repository-wide ideas into a reviewed plan file, a non-executable parent issue, and linked draft child `WorkUnit` issues:
 
 1. **Interactive Idea $\rightarrow$ Repo-Local Plan File**:
-   - Discuss the idea and outcome, inspect `.swarm/goals.md`, `.swarm/rules/`, implementation code, and open issues, and agree on independent `## <title>` tasks with `### Objective`, `### Constraints`, observable `### Acceptance Criteria` checkboxes, and explicit `depends on: <earlier-step-number>` lines.
+   - Discuss the idea and outcome, inspect `.swarm/goals.md`, `.swarm/rules/`, implementation code, and open issues, and agree on independent `## <title>` tasks with `### Objective`, `### Constraints`, observable `### Acceptance Criteria` checkboxes (for a bugfix, one names a regression test that fails before the fix; never "make check passes", which the coordinator already runs), and explicit `depends on: <earlier-step-number>` lines.
    - Write the plan to a user-chosen repo-local file (without overwriting existing files unless instructed).
 2. **Preview `Step N` Decomposition (Read-Only)**:
    ```bash
-   swarm repo plan --from ROADMAP.md --backend github
+   swarm repo plan --from ROADMAP.md
    ```
-3. **Publish Native Epic & Draft Child WorkUnits (Maintainer Only)**:
-   - Only on explicit maintainer instruction, publish the unlabeled `Epic` issue (`type: Epic`) containing the full plan and attach draft child `WorkUnit` sub-issues (`swarm:draft`):
+3. **Publish Parent Issue & Draft Child WorkUnits (Maintainer Only)**:
+   - Only on explicit maintainer instruction, publish the parent issue (`swarm:parent`) containing the full plan and attach draft child `WorkUnit` sub-issues (`swarm:draft`):
      ```bash
-     swarm repo plan --from ROADMAP.md --apply --backend github
+     swarm repo plan --from ROADMAP.md --apply
      ```
-   - Selectively approve child `WorkUnit` issues when ready for workers to claim (never approve or execute the `Epic` issue itself):
+   - Selectively approve child `WorkUnit` issues when ready for workers to claim (never approve or execute the parent issue itself):
      ```bash
-     swarm issue approve <child-issue-number> --backend github
+     swarm issue approve <child-issue-number>
      ```
 4. **Scan, Sense-Make & Triage Open Issues (`--scan`)**:
    - Audit open issues (including `swarm:community` intake reports) against `.swarm/goals.md`, `.swarm/rules/`, and file touchpoints:
      ```bash
-     swarm repo plan --scan --backend github
-     swarm repo plan --scan --apply --normalize --backend github
+     swarm repo plan --scan
+     swarm repo plan --scan --apply --normalize
      ```
