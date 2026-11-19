@@ -57,9 +57,9 @@ describe('network map', () => {
   it('adds lore to the Archive only after the episode', () => {
     const lore = ['lore.meter-trace', 'lore.last-sysop', 'lore.oyelaran'];
     const game = (done: boolean) => {
-      const data = freshSave();
+      const data = freshSave(1);
       if (done) data.episodes.push('episode.000');
-      return createGame({ content, data, persist: () => {}, designationSeed: () => 1 });
+      return createGame({ content, data, persist: () => {} });
     };
     const ids = (done: boolean) => searchArchives(game(done).archives(), '').map((a) => a.id);
     lore.forEach((id) => expect(ids(false)).not.toContain(id));
@@ -84,9 +84,9 @@ describe('the optional discovery', () => {
   });
 
   it('persists its flag', () => {
-    const data = freshSave();
+    const data = freshSave(1);
     data.episodes.push('episode.000');
-    const game = createGame({ content, data, persist: () => {}, designationSeed: () => 1 });
+    const game = createGame({ content, data, persist: () => {} });
     expect(game.attempt('puzzle.service', { kind: 'code', code: '709' }).status).toBe('solved');
     expect(data.flags).toContain('service-panel-open');
   });

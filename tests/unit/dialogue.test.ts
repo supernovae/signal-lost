@@ -83,12 +83,11 @@ describe('dialogue memory', () => {
       feedback: [],
     });
     const content = { ...emptyContent(), puzzles: [puzzle] };
-    const play = (data = freshSave()) =>
+    const play = (data = freshSave(1)) =>
       createGame({
         content,
         data,
         persist: (latest) => writeSave(storage, latest),
-        designationSeed: () => 1,
       });
 
     const game = play();
