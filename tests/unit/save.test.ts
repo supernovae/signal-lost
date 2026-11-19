@@ -88,7 +88,7 @@ describe('save data', () => {
     expect(loadSave(storage)).toEqual({ status: 'loaded', data: freshSave(123) });
   });
 
-  it('migrates a completed Episode 000 save from the original v1 writer', () => {
+  it('migrates the completed Episode 000 v1 fixture without losing progress', () => {
     const { schemaVersion, designation, ...global } = JSON.parse(completedV1);
     expect(schemaVersion).toBe(1);
     expect(designation).toMatch(/^OBS-[0-9A-F]{4}$/);
@@ -105,7 +105,7 @@ describe('save data', () => {
 
     const storage = memoryStorage(completedV1);
     const draw = vi.fn(seed);
-    const { data, status, persist } = openSaveSession(storage, draw);
+    const { data, status } = openSaveSession(storage, draw);
     expect(status).toBe('migrated');
     expect(data).toEqual({
       ...global,
@@ -129,8 +129,9 @@ describe('save data', () => {
         'flag:forge-opened',
       ]),
     );
-    expect(persist()).toBe(true);
+    expect(storage.setItem).toHaveBeenCalledOnce();
     expect(openSaveSession(storage, draw)).toMatchObject({ status: 'loaded', data });
+    expect(storage.setItem).toHaveBeenCalledOnce();
     expect(draw).toHaveBeenCalledOnce();
   });
 

@@ -1,12 +1,16 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { evaluate } from '../../src/content/conditions.ts';
 import type { CarrierPuzzle, RasterPuzzle } from '../../src/content/schema.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import { loadContent } from '../../src/content/validate.ts';
+import { createScriptedDialogue } from '../../src/narrative/dialogue.ts';
 import { freshSave } from '../../src/progress/save.ts';
 import { createGame } from '../../src/puzzle/game.ts';
 import { renderRaster } from '../../src/puzzle/raster-view.ts';
 import { searchArchives } from '../../src/world/archive.ts';
+import { mapNodes } from '../../src/world/map.ts';
 
 const { content, errors } = loadContent(readContentDir(resolve('content')));
 const puzzle = (id: string) => content.puzzles.find((p) => p.id === id)!;
@@ -179,6 +183,45 @@ describe('the ending', () => {
     expect(result.granted).toContain('completed:episode.000');
     expect(data.profile.designation).toMatch(/^OBS-[0-9A-F]{4}$/);
     expect(game.transmissions().map((t) => t.id)).toContain('tx.reconstructed');
+  });
+
+  it('replays the carried-forward v1 fixture’s progress using bundled content', () => {
+    // This checks gameplay consistency. The approved-base v1 writer is absent from this snapshot.
+    const fixture = JSON.parse(
+      readFileSync(new URL('../fixtures/episode-000-complete-v1.json', import.meta.url), 'utf8'),
+    );
+    const { game, data } = newGame();
+    const echo = createScriptedDialogue(content.characters.find((c) => c.id === 'echo')!);
+    expect(game.say(echo, 'hint')?.id).toBe('echo.carrier.hint.1');
+    expect(game.attempt('puzzle.carrier', ANSWERS.carrier).status).toBe('solved');
+
+    const manual = game.archives().find((entry) => entry.id === 'manual.rev-c')!;
+    game.grant([`read:${manual.id}`]);
+    const wrong = game.attempt('puzzle.pattern', { ...ANSWERS.pattern, reference: '7-1-4' });
+    expect(wrong.status).toBe('wrong');
+    expect(game.attempt('puzzle.pattern', ANSWERS.pattern).status).toBe('solved');
+    expect(game.attempt('puzzle.archive', ANSWERS.archive).status).toBe('solved');
+
+    const nodes = mapNodes(content.sectors, game.facts());
+    const relay = nodes.find(({ sector }) => sector.id === 'relay-07')!;
+    expect(relay.enterable).toBe(true);
+    game.grant(relay.sector.grantsOnEnter);
+    expect(game.attempt(relay.sector.puzzle!, { kind: 'code', code: '709' }).status).toBe('solved');
+    const forge = content.artifacts.find((artifact) => artifact.id === 'forge')!;
+    expect(evaluate(forge.requires, game.facts())).toBe(true);
+    game.grant(forge.grantsOnOpen);
+
+    expect(fixture).toMatchObject({
+      puzzles: data.puzzles,
+      transmissions: data.transmissions,
+      archives: data.archives,
+      locations: data.locations,
+      episodes: data.episodes,
+      flags: data.flags,
+      seenLines: data.seenLines,
+      failures: data.failures,
+      designation: data.profile.designation,
+    });
   });
 
   it('proves the handshake came from the signal, then gives the exact ending', () => {
