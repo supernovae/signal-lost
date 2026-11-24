@@ -31,12 +31,15 @@ export function openArchive(
     const meta = document.createElement('p');
     meta.className = 'dim';
     meta.textContent = `BOARD: ${archive.board}  FROM: ${archive.from}  DATE: ${archive.date}`;
+    const metadataRow = document.createElement('div');
+    metadataRow.className = 'archive-metadata';
+    metadataRow.append(meta, createOriginBadge(archive.origin));
     const body = archive.body.map((text) => {
       const line = document.createElement('p');
       line.textContent = text || ' ';
       return line;
     });
-    reader.replaceChildren(heading, meta, createOriginBadge(archive.origin), ...body);
+    reader.replaceChildren(heading, metadataRow, ...body);
     const attribution = messageCredit(archive.attribution);
     if (attribution) {
       const credit = document.createElement('p');

@@ -524,6 +524,18 @@ body[data-scene='bbs'] .bbs-handle input {
   margin: 0;
 }
 
+.archive-reader .archive-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.archive-reader .archive-metadata .message-origin {
+  margin-block: 0;
+}
+
 .inquiry {
   display: flex;
   flex-direction: column;
