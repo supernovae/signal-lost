@@ -1,3 +1,5 @@
+import { messageCredit } from '../bbs/copy.ts';
+import { createOriginBadge } from '../terminal/terminal.ts';
 import type { Archive } from '../content/schema.ts';
 import { searchArchives } from './archive.ts';
 
@@ -29,17 +31,20 @@ export function openArchive(
     const meta = document.createElement('p');
     meta.className = 'dim';
     meta.textContent = `BOARD: ${archive.board}  FROM: ${archive.from}  DATE: ${archive.date}`;
+    const metadataRow = document.createElement('div');
+    metadataRow.className = 'archive-metadata';
+    metadataRow.append(meta, createOriginBadge(archive.origin));
     const body = archive.body.map((text) => {
       const line = document.createElement('p');
       line.textContent = text || ' ';
       return line;
     });
-    reader.replaceChildren(heading, meta, ...body);
-    if (archive.attribution) {
+    reader.replaceChildren(heading, metadataRow, ...body);
+    const attribution = messageCredit(archive.attribution);
+    if (attribution) {
       const credit = document.createElement('p');
       credit.className = 'dim credit';
-      const handle = archive.attribution.handle ? ` (${archive.attribution.handle})` : '';
-      credit.textContent = `FILED BY: ${archive.attribution.author}${handle}`;
+      credit.textContent = attribution;
       reader.append(credit);
     }
     reader.scrollTop = 0;

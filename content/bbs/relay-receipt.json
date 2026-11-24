@@ -1,0 +1,10 @@
+{
+  "kind": "message",
+  "id": "relay-receipt",
+  "board": "general",
+  "title": "Receipt filed",
+  "from": "ECHO",
+  "date": "UNDATED",
+  "presentation": "private",
+  "body": ["This terminal filed your acknowledgement."]
+}

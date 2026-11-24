@@ -1,0 +1,10 @@
+{
+  "kind": "message",
+  "id": "relay-deferred",
+  "board": "general",
+  "title": "Note left pending",
+  "from": "ECHO",
+  "date": "UNDATED",
+  "presentation": "private",
+  "body": ["This terminal marked the note for later."]
+}

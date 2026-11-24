@@ -1,0 +1,13 @@
+{
+  "kind": "message",
+  "id": "relay-note",
+  "board": "general",
+  "title": "A note at the relay desk",
+  "from": "ECHO",
+  "date": "UNDATED",
+  "presentation": "ai-fictional",
+  "body": [
+    "This copy of the board keeps its own receipt. Choose how to file this note.",
+    "If you want to check the local line, type LINECHECK at the BBS prompt."
+  ]
+}

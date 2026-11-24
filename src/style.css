@@ -241,9 +241,34 @@ body[data-tool='open'] .terminal-log {
   padding-right: 0;
 }
 
+body[data-scene='bbs'] #app {
+  z-index: 3;
+}
+
+body[data-scene='bbs'] .terminal {
+  inset: clamp(0.35rem, 2vmin, 1rem);
+  padding: clamp(0.45rem, 2vmin, 1rem);
+  background: var(--bbs-surface);
+  color: var(--bbs-text);
+}
+
+body[data-scene='bbs'][data-bbs-theme='high-readability'] .terminal {
+  line-height: 1.65;
+}
+
+body[data-scene='bbs'] .terminal p {
+  text-shadow: none;
+}
+
+body[data-scene='bbs'] .terminal .dim {
+  color: var(--bbs-dim);
+}
+
 body[data-scene='bbs'] .terminal-log {
   flex: 1;
-  padding-right: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bbs-surface);
+  scrollbar-color: var(--bbs-dim) var(--bbs-surface);
   overflow-wrap: anywhere;
 }
 
@@ -253,40 +278,121 @@ body[data-scene='bbs'] .terminal-menu {
   padding: 4px;
 }
 
-body[data-scene='bbs'] .terminal-prompt input {
+body[data-scene='bbs'] .terminal button {
+  background: var(--bbs-control);
+  color: var(--bbs-text);
+  border-color: var(--bbs-dim);
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+body[data-scene='bbs'] .terminal button:is(:hover, :focus-visible):enabled {
+  background: var(--bbs-hover);
+}
+
+body[data-scene='bbs'] .terminal button[aria-pressed='true'] {
+  background: var(--bbs-selected);
+  border-color: var(--bbs-focus);
+}
+
+body[data-scene='bbs'] .terminal button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+body[data-scene='bbs'] .terminal :is(input:not([type='checkbox']), select) {
+  background: var(--bbs-field);
+  color: var(--bbs-text);
+  border: 1px solid var(--bbs-dim);
   text-transform: none;
 }
 
 body[data-scene='bbs'] .terminal :focus-visible {
+  outline-color: var(--bbs-focus);
   outline-offset: 1px;
 }
 
-body[data-scene='bbs'] :is(.system, .history, .sysop) {
+body[data-scene='bbs'] .settings input[type='checkbox'] {
+  accent-color: var(--bbs-text);
+}
+
+.bbs-output {
   max-width: 76ch;
   margin: 0.4rem 0 0.75rem;
   padding-inline-start: 0.75rem;
+  border-inline-start: 2px solid currentColor;
+  color: var(--bbs-output-color);
 }
 
-body[data-scene='bbs'] :is(.system, .history, .sysop) > :first-child {
+.bbs-output > :first-child {
   margin-bottom: 0.3rem;
   font-weight: bold;
 }
 
-body[data-scene='bbs'] .system {
-  border-inline-start: 2px solid currentColor;
+.bbs-output.system {
+  --bbs-output-color: var(--bbs-tone-system);
 }
-
-body[data-scene='bbs'] .history {
-  border-inline-start: 4px double currentColor;
+.bbs-output.history {
+  --bbs-output-color: var(--bbs-tone-history);
+  border-inline-start-style: double;
+  border-inline-start-width: 4px;
 }
-
-body[data-scene='bbs'] .sysop {
-  border-inline-start: 2px dashed currentColor;
+.bbs-output.sysop {
+  --bbs-output-color: var(--bbs-tone-sysop);
+  border-inline-start-style: dashed;
   font-style: italic;
+}
+.bbs-output.ai-fictional {
+  --bbs-output-color: var(--bbs-tone-ai-fictional);
+  border-inline-start-style: dashed;
+}
+.bbs-output.recovered {
+  --bbs-output-color: var(--bbs-tone-recovered);
+}
+.bbs-output.private {
+  --bbs-output-color: var(--bbs-tone-private);
+}
+.bbs-output.door {
+  --bbs-output-color: var(--bbs-tone-door);
+}
+.bbs-output.network-error {
+  --bbs-output-color: var(--bbs-tone-network-error);
+}
+.bbs-output.restricted {
+  --bbs-output-color: var(--bbs-tone-restricted);
+  border-inline-start-style: dashed;
+}
+
+.message-origin {
+  display: inline-block;
+  margin-block: 0.35rem;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid currentColor;
+  font-size: 0.875rem;
+  color: #ffe5c7;
+  background: #352319;
+}
+
+.message-origin[data-origin='reviewed-community'] {
+  font-weight: bold;
+  color: #b9f4e4;
+  background: #15352c;
+}
+
+body[data-scene='bbs'] .message-origin[data-origin='fictional'] {
+  color: var(--bbs-origin-fictional-text);
+  background: var(--bbs-origin-fictional-background);
+}
+
+body[data-scene='bbs'] .message-origin[data-origin='reviewed-community'] {
+  color: var(--bbs-origin-reviewed-community-text);
+  background: var(--bbs-origin-reviewed-community-background);
 }
 
 body[data-scene='bbs'] .tool-panel {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-height: 50%;
+  padding-inline: 4px;
 }
 
 body[data-scene='bbs'] .bbs-handle {
@@ -300,10 +406,23 @@ body[data-scene='bbs'] .bbs-handle {
 body[data-scene='bbs'] .bbs-handle input {
   min-width: 0;
   max-width: 100%;
-  color: inherit;
-  background: #0009;
-  border: 1px solid var(--phosphor-dim);
   font: inherit;
+  padding: 0.2rem 0.4rem;
+}
+
+.settings-theme {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.settings-theme select {
+  font: inherit;
+  color: var(--phosphor);
+  background: var(--space);
+  border: 1px solid var(--phosphor-dim);
+  max-width: 100%;
   padding: 0.2rem 0.4rem;
 }
 
@@ -403,6 +522,18 @@ body[data-scene='bbs'] .bbs-handle input {
 .archive-reader h3 {
   font: inherit;
   margin: 0;
+}
+
+.archive-reader .archive-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.archive-reader .archive-metadata .message-origin {
+  margin-block: 0;
 }
 
 .inquiry {

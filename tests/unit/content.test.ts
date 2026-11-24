@@ -263,14 +263,18 @@ describe('schemas and loading', () => {
       data.episodes.push('episode.000');
       const offer = getBbsOffer(after.content, factsOf(data))!;
       const host = createDoorHost(createDoorRegistry(after.content.doors), data, () => true);
-      const bbs = createBbsDoorSession(offer, { ...data.profile, readMessages: [] }, host);
+      const bbs = createBbsDoorSession(offer, () => data, host);
       await bbs.dispatch('CONNECT');
       await bbs.dispatch('LOGIN Finch');
       await bbs.dispatch('DOORS');
       const action = bbs.screen().actions.find(({ command }) => command === 'OPEN test-quiz')!;
       expect(action.label).toBe('Test quiz');
-      expect((await bbs.dispatch(action.command))!.output.lines).toContain('Choose one');
-      expect((await bbs.dispatch('1'))!.output.lines).toContain('Quiz filed');
+      expect((await bbs.dispatch(action.command))!.output.flatMap(({ lines }) => lines)).toContain(
+        'Choose one',
+      );
+      expect((await bbs.dispatch('1'))!.output.flatMap(({ lines }) => lines)).toContain(
+        'Quiz filed',
+      );
       expect(data.flags).toContain('quiz-complete');
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -389,6 +393,141 @@ describe('diagnostics', () => {
     const error = firstError(files);
     expect(error).toMatchObject({ file, field });
     expect(error.message).toContain(message);
+  });
+
+  it('validates the bundled BBS graph and retains archive defaults and inherited reviewed credit', () => {
+    const { content, errors } = loadContent(readContentDir('content'));
+    expect(errors).toEqual([]);
+    expect(content.bbs.find(({ id }) => id === 'relay-note')).toMatchObject({
+      origin: 'fictional',
+      presentation: 'ai-fictional',
+    });
+    expect(content.archives.find(({ id }) => id === 'manual.rev-c')).toMatchObject({
+      origin: 'fictional',
+      presentation: 'recovered',
+    });
+    expect(content.archives.find(({ id }) => id === 'community.second-line')).toMatchObject({
+      origin: 'reviewed-community',
+      attribution: { author: 'SIGNAL//LOST maintainers' },
+    });
+    expect(loadContent(validFiles()).content.bbs.find(({ id }) => id === 'post')).toMatchObject({
+      origin: 'fictional',
+      presentation: 'history',
+      board: 'board',
+    });
+  });
+
+  it.each([
+    [
+      'relay-thread',
+      'messages',
+      [{ kind: 'message', id: 'missing' }],
+      'messages.0.id',
+      'unknown BBS message',
+    ],
+    [
+      'relay-thread',
+      'messages',
+      [{ kind: 'message', id: 'general' }],
+      'messages.0.id',
+      'unknown BBS message',
+    ],
+    [
+      'relay-thread',
+      'messages',
+      [{ kind: 'archive', id: 'missing' }],
+      'messages.0.id',
+      'unknown archive',
+    ],
+    [
+      'relay-thread',
+      'messages',
+      [{ kind: 'archive', id: 'relay-note' }],
+      'messages.0.id',
+      'unknown archive',
+    ],
+    [
+      'relay-thread',
+      'messages',
+      [{ kind: 'archive', id: 'bbs.keel' }],
+      'messages.0.id',
+      'search-only archives',
+    ],
+    [
+      'second-line-thread',
+      'messages',
+      [{ kind: 'message', id: 'relay-note' }],
+      'messages.0.id',
+      'same board',
+    ],
+    [
+      'relay-thread',
+      'replies',
+      [{ id: 'one', label: 'One', messageId: 'missing' }],
+      'replies.0.messageId',
+      'unknown BBS message',
+    ],
+    [
+      'relay-thread',
+      'replies',
+      [{ id: 'one', label: 'One', messageId: 'general' }],
+      'replies.0.messageId',
+      'unknown BBS message',
+    ],
+    [
+      'relay-thread',
+      'replies',
+      [{ id: 'one', label: 'One', messageId: 'relay-note' }],
+      'replies.0.messageId',
+      'public thread post',
+    ],
+    [
+      'second-line-thread',
+      'replies',
+      [{ id: 'one', label: 'One', messageId: 'relay-receipt' }],
+      'replies.0.messageId',
+      'same board',
+    ],
+    [
+      'relay-thread',
+      'replies',
+      [
+        { id: 'one', label: 'One', messageId: 'relay-receipt' },
+        { id: 'one', label: 'Two', messageId: 'relay-deferred' },
+      ],
+      'replies.1.id',
+      'duplicate reply',
+    ],
+    ['echo-profile', 'characterId', 'missing', 'characterId', 'unknown character'],
+    ['echo-profile', 'characterId', 'general', 'characterId', 'unknown character'],
+    ['echo-profile', 'bbs', 'general', 'bbs', 'unknown BBS endpoint'],
+    ['linecheck', 'clueMessageId', 'relay-receipt', 'clueMessageId', 'public thread clue'],
+    ['linecheck', 'clueMessageId', 'community.second-line', 'clueMessageId', 'public thread clue'],
+    ['linecheck', 'command', 'hElP', 'command', 'reserved or duplicate'],
+  ])('rejects invalid BBS %s %s references', (record, key, value, field, message) => {
+    const files = readContentDir('content');
+    const file = `content/bbs/${record}.json`;
+    files[file] = { ...(files[file] as Record<string, unknown>), [key]: value };
+    expect(loadContent(files).errors).toContainEqual({
+      file,
+      field,
+      message: expect.stringContaining(message),
+    });
+  });
+
+  it('rejects case-insensitive duplicate hidden commands on the same endpoint', () => {
+    const files = readContentDir('content');
+    const file = 'content/bbs/zz-collision.json';
+    files[file] = {
+      ...(files['content/bbs/linecheck.json'] as Record<string, unknown>),
+      id: 'another-secret',
+      command: 'lineCHECK',
+    };
+    expect(loadContent(files).errors).toContainEqual({
+      file,
+      field: 'command',
+      message: expect.stringContaining('duplicate'),
+    });
   });
 
   it('reports invalid fields', () => {

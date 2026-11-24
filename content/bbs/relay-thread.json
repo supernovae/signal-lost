@@ -1,0 +1,25 @@
+{
+  "kind": "thread",
+  "id": "relay-thread",
+  "board": "general",
+  "title": "Relay desk notes",
+  "order": 0,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "relay-note"
+    }
+  ],
+  "replies": [
+    {
+      "id": "acknowledge",
+      "label": "Acknowledge the note",
+      "messageId": "relay-receipt"
+    },
+    {
+      "id": "defer",
+      "label": "Leave the note pending",
+      "messageId": "relay-deferred"
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import { bbsCopy } from '../bbs/copy.ts';
+import { bbsThemeIds, type BbsTheme } from '../bbs/themes.ts';
 import type { SaveData } from '../progress/save.ts';
 
 export type Preferences = SaveData['preferences'];
@@ -5,6 +7,7 @@ export type Preferences = SaveData['preferences'];
 export interface SettingsTargets {
   setMuted(muted: boolean): void;
   setMotion(enabled: boolean): void;
+  setBbsTheme(theme: BbsTheme): void;
   setAttribute(name: 'motion' | 'effects', value: 'on' | 'off'): void;
 }
 
@@ -21,6 +24,7 @@ export function applyPreferences(
   const motion = effectiveMotion(preferences, systemReduced);
   targets.setMuted(preferences.muted);
   targets.setMotion(motion);
+  targets.setBbsTheme(preferences.bbsTheme);
   targets.setAttribute('motion', motion ? 'on' : 'off');
   targets.setAttribute('effects', preferences.effects ? 'on' : 'off');
 }
@@ -78,7 +82,26 @@ export function openSettings(panel: HTMLElement, options: SettingsPanelOptions):
   };
   showReset();
 
+  const theme = document.createElement('label');
+  theme.className = 'settings-theme';
+  const select = document.createElement('select');
+  for (const id of bbsThemeIds) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = bbsCopy.themes[id];
+    select.append(option);
+  }
+  select.value = preferences.bbsTheme;
+  select.addEventListener('change', () => {
+    const selected = bbsThemeIds.find((id) => id === select.value);
+    if (!selected) return;
+    preferences.bbsTheme = selected;
+    onChange();
+  });
+  theme.append(bbsCopy.text.theme, select);
+
   form.append(
+    theme,
     checkbox('SOUND MUTED', preferences.muted, (value) => {
       preferences.muted = value;
       onChange();
@@ -95,4 +118,5 @@ export function openSettings(panel: HTMLElement, options: SettingsPanelOptions):
     button('CLOSE', onClose),
   );
   panel.replaceChildren(form);
+  select.focus();
 }

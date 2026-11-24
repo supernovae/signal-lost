@@ -1,19 +1,17 @@
 import type { Scene } from '../app/scenes.ts';
 import { createTerminal, type Terminal } from '../terminal/terminal.ts';
-import type { BbsEffect, BbsTone } from './bbs.ts';
-import type { BbsDoorSession, createBbsDoorSession } from './door-session.ts';
+import { bbsCopy } from './copy.ts';
+import type { BbsDoorSession } from './door-session.ts';
+import type { BbsEffect, BbsSnapshot } from './progress.ts';
 
-const labels: Record<BbsTone, string> = {
-  system: 'SYSTEM',
-  history: 'HISTORICAL MESSAGE',
-  sysop: 'SYSOP',
-};
+const { tones, text } = bbsCopy;
 
 export function createBbsScene(
   root: HTMLElement,
   bbs: BbsDoorSession,
-  identity: Parameters<typeof createBbsDoorSession>[1],
-  onEffect: (effect: BbsEffect) => void,
+  snapshot: () => BbsSnapshot,
+  onEffect: (effect: BbsEffect) => boolean,
+  onSettings: (terminal: Terminal) => void,
   onDisconnect: () => void,
 ): Scene {
   let terminal: Terminal | undefined;
@@ -21,39 +19,57 @@ export function createBbsScene(
   return {
     mount() {
       document.body.dataset['scene'] = 'bbs';
-      const active = createTerminal(root, 'BBS>');
+      const active = createTerminal(root, text.prompt);
       terminal = active;
       let handleInput: HTMLInputElement | undefined;
+      let settingsOpen = false;
+      let pending = false;
 
       async function run(command: string, fromHandleForm = false): Promise<void> {
-        const result = await bbs.dispatch(command);
-        if (!result || terminal !== active) return;
-        const { output, effect } = result;
-        if (effect) onEffect(effect);
-        const { phase, actions, hint } = bbs.screen();
-        if (phase === 'offline') {
-          onDisconnect();
-          return;
+        if (pending) return;
+        pending = true;
+        try {
+          const result = await bbs.dispatch(command);
+          if (!result || terminal !== active) return;
+          const { output, effect, opensSettings } = result;
+          const saved = !effect || onEffect(effect);
+          const { phase, actions, hint } = bbs.screen();
+          if (phase === 'offline') {
+            onDisconnect();
+            return;
+          }
+          if (!opensSettings && (settingsOpen || (phase !== 'login' && handleInput))) {
+            active.closePanel();
+            settingsOpen = false;
+            handleInput = undefined;
+          }
+          active.menu(
+            actions.map(({ command, label, selected, disabled }) => ({
+              key: command,
+              showKey: /^(READ|OPEN) /.test(command) || (phase === 'door' && command !== 'EXIT'),
+              label,
+              acceptLabel: false,
+              selected,
+              disabled,
+              run:
+                phase === 'login' && command === 'LOGIN' ? openHandleForm : () => void run(command),
+            })),
+          );
+          for (const block of output) {
+            active.print([tones[block.tone], ...block.lines], block.tone, block);
+          }
+          if (output.length && output.at(-1)?.tone !== 'system' && phase !== 'door') {
+            active.print([hint], 'dim');
+          }
+          if (!saved) active.print([tones['network-error'], text.saveRefused], 'network-error');
+          if (opensSettings) {
+            settingsOpen = true;
+            onSettings(active);
+          } else if (fromHandleForm && handleInput) handleInput.focus();
+          else active.focus();
+        } finally {
+          pending = false;
         }
-        if (phase !== 'login' && handleInput) {
-          active.closePanel();
-          handleInput = undefined;
-        }
-        active.menu(
-          actions.map(({ command, label }) => ({
-            key:
-              /^(READ|OPEN) /.test(command) || (phase === 'door' && command !== 'EXIT')
-                ? command
-                : undefined,
-            label,
-            acceptLabel: !command.startsWith('OPEN ') && phase !== 'door',
-            run: command === 'LOGIN' ? openHandleForm : () => run(command),
-          })),
-        );
-        active.print([labels[output.tone], ...output.lines], output.tone);
-        if (output.tone !== 'system') active.print([hint], 'dim');
-        if (fromHandleForm && handleInput) handleInput.focus();
-        else active.focus();
       }
 
       function openHandleForm(): void {
@@ -66,21 +82,21 @@ export function createBbsScene(
         form.className = 'bbs-handle';
         const label = document.createElement('label');
         label.htmlFor = 'bbs-handle';
-        label.textContent = 'FICTIONAL HANDLE';
+        label.textContent = text.handle;
         const input = document.createElement('input');
         input.type = 'text';
         input.id = 'bbs-handle';
         input.autocomplete = 'off';
         input.spellcheck = false;
         input.setAttribute('autocapitalize', 'off');
-        input.value = identity.handle ?? '';
+        input.value = snapshot().profile.handle ?? '';
         const submit = document.createElement('button');
         submit.type = 'submit';
-        submit.textContent = 'SIGN IN';
+        submit.textContent = text.signIn;
         form.append(label, input, submit);
         form.addEventListener('submit', (event) => {
           event.preventDefault();
-          run(`LOGIN ${input.value}`, true);
+          void run(`LOGIN ${input.value}`, true);
         });
         panel.append(form);
         handleInput = input;

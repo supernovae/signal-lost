@@ -11,8 +11,8 @@ import {
 import {
   archiveSchema,
   artifactSchema,
-  bbsBoardSchema,
-  bbsMessageSchema,
+  bbsPublicCommands,
+  bbsSchema,
   characterSchema,
   communitySchema,
   doorMetadataSchema,
@@ -23,6 +23,7 @@ import {
   transmissionSchema,
   triviaDoorSchema,
   type Content,
+  type BbsRecord,
   type DoorMetadata,
 } from './schema.ts';
 
@@ -51,7 +52,7 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   puzzles: puzzleSchema,
   transmissions: transmissionSchema,
   archives: archiveSchema,
-  bbs: z.discriminatedUnion('kind', [bbsBoardSchema, bbsMessageSchema]),
+  bbs: bbsSchema,
   doors: triviaDoorSchema,
   characters: characterSchema,
   sectors: sectorSchema,
@@ -155,6 +156,93 @@ export function loadContent(
 
 type Sources = Map<object, { file: string; prefix: string }>;
 
+function checkBbsReferences(
+  content: Content,
+  report: (entry: BbsRecord, field: string, message: string) => void,
+): void {
+  const endpoints = new Set(
+    content.bbs.filter((entry) => entry.kind === 'board').map((entry) => entry.id),
+  );
+  const boards = new Map(
+    content.bbs.filter((entry) => entry.kind === 'message-board').map((entry) => [entry.id, entry]),
+  );
+  const messages = new Map(
+    content.bbs.filter((entry) => entry.kind === 'message').map((entry) => [entry.id, entry]),
+  );
+  const archives = new Map(content.archives.map((entry) => [entry.id, entry]));
+  const characters = new Set(content.characters.map((entry) => entry.id));
+  const threads = content.bbs.filter((entry) => entry.kind === 'thread');
+  const publicPosts = new Set(
+    threads.flatMap((thread) =>
+      thread.messages.filter((ref) => ref.kind === 'message').map((ref) => ref.id),
+    ),
+  );
+  const commands = new Map<string, Set<string>>();
+
+  for (const entry of content.bbs) {
+    if ('bbs' in entry && !endpoints.has(entry.bbs)) {
+      report(entry, 'bbs', `unknown BBS endpoint "${entry.bbs}"`);
+    }
+    if (entry.kind === 'message' && !endpoints.has(entry.board) && !boards.has(entry.board)) {
+      report(entry, 'board', `unknown BBS board "${entry.board}"`);
+    }
+    if (entry.kind === 'profile' && !characters.has(entry.characterId)) {
+      report(entry, 'characterId', `unknown character "${entry.characterId}"`);
+    }
+    if (entry.kind === 'thread') {
+      if (!boards.has(entry.board))
+        report(entry, 'board', `unknown message board "${entry.board}"`);
+      entry.messages.forEach((ref, i) => {
+        const field = `messages.${i}.id`;
+        if (ref.kind === 'message') {
+          const post = messages.get(ref.id);
+          if (!post) report(entry, field, `unknown BBS message "${ref.id}"`);
+          else if (post.board !== entry.board)
+            report(entry, field, 'message must belong to the same board');
+        } else {
+          const archive = archives.get(ref.id);
+          if (!archive) report(entry, field, `unknown archive "${ref.id}"`);
+          else if (archive.searchOnly)
+            report(entry, field, 'search-only archives cannot appear in threads');
+        }
+      });
+      const replies = new Set<string>();
+      entry.replies.forEach((reply, i) => {
+        if (replies.has(reply.id))
+          report(entry, `replies.${i}.id`, `duplicate reply "${reply.id}"`);
+        replies.add(reply.id);
+        const field = `replies.${i}.messageId`;
+        const post = messages.get(reply.messageId);
+        if (!post) report(entry, field, `unknown BBS message "${reply.messageId}"`);
+        else if (post.board !== entry.board)
+          report(entry, field, 'reply must belong to the same board');
+        else if (publicPosts.has(post.id))
+          report(entry, field, 'reply cannot also be a public thread post');
+      });
+    }
+    if (entry.kind === 'secret') {
+      const tokens = commands.get(entry.bbs) ?? new Set<string>(bbsPublicCommands);
+      const token = entry.command.toUpperCase();
+      if (tokens.has(token))
+        report(entry, 'command', `reserved or duplicate BBS command "${token}"`);
+      tokens.add(token);
+      commands.set(entry.bbs, tokens);
+      const reachable = threads.some(
+        (thread) =>
+          boards.get(thread.board)?.bbs === entry.bbs &&
+          thread.messages.some((ref) => {
+            if (ref.id !== entry.clueMessageId) return false;
+            if (ref.kind === 'message') return messages.get(ref.id)?.board === thread.board;
+            const archive = archives.get(ref.id);
+            return archive && !archive.searchOnly && !archive.requires;
+          }),
+      );
+      if (!reachable)
+        report(entry, 'clueMessageId', 'secret needs a public thread clue on this endpoint');
+    }
+  }
+}
+
 function checkDuplicates(
   content: Content,
   doors: readonly DoorMetadata[],
@@ -240,15 +328,12 @@ function checkReferences(
   for (const record of [...content.transmissions, ...content.archives, ...content.artifacts]) {
     checkCondition(record.requires, record, 'requires');
   }
-  const boardIds = new Set(content.bbs.filter((entry) => entry.kind === 'board').map((b) => b.id));
+  checkBbsReferences(content, (entry, field, message) => {
+    errors.push({ file: sources.get(entry)!.file, field, message });
+  });
   for (const entry of content.bbs) {
+    if (entry.kind !== 'board') continue;
     const { file } = sources.get(entry)!;
-    if (entry.kind === 'message') {
-      if (!boardIds.has(entry.board)) {
-        errors.push({ file, field: 'board', message: `unknown BBS board "${entry.board}"` });
-      }
-      continue;
-    }
     checkCondition(entry.requires, entry, 'requires');
     entry.status.forEach(({ when }, i) => checkCondition(when, entry, `status.${i}.when`));
     entry.archiveIds.forEach((id, index) => {

@@ -1,0 +1,8 @@
+{
+  "kind": "profile",
+  "id": "echo-profile",
+  "bbs": "deep-field",
+  "characterId": "echo",
+  "handle": "ECHO",
+  "bio": ["Local preservation routine. Its messages are scripted records kept with this board."]
+}

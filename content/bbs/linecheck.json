@@ -1,0 +1,8 @@
+{
+  "kind": "secret",
+  "id": "linecheck",
+  "bbs": "deep-field",
+  "command": "LINECHECK",
+  "clueMessageId": "relay-note",
+  "output": ["LOCAL LINE CHECK COMPLETE.", "This terminal can read its own copy of the relay desk."]
+}

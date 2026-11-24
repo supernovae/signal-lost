@@ -1,51 +1,63 @@
 import type { DoorScreen } from '../doors/contract.ts';
 import type { DoorHost, DoorResult } from '../doors/host.ts';
-import { createBbs } from './bbs.ts';
+import { createBbs, type BbsAction, type DispatchResult } from './bbs.ts';
+import { bbsCopy } from './copy.ts';
+
+const { actions, text } = bbsCopy;
 
 /** Routes the shared terminal to a door while the BBS keeps the player's sign-in. */
 export function createBbsDoorSession(
   offer: Parameters<typeof createBbs>[0],
-  identity: Parameters<typeof createBbs>[1],
+  snapshot: Parameters<typeof createBbs>[1],
   host: DoorHost,
 ) {
-  const bbs = createBbs(offer, identity, host);
+  const bbs = createBbs(offer, snapshot, host);
   let doorScreen: DoorScreen | undefined;
   let opening = false;
 
-  function screen() {
+  function screen(): {
+    phase: ReturnType<typeof bbs.screen>['phase'] | 'door';
+    hint: string;
+    actions: BbsAction[];
+  } {
     if (!doorScreen) return bbs.screen();
     return {
       phase: 'door' as const,
-      hint: 'TYPE EXIT TO RETURN TO THE MAIN MENU.',
-      actions: [...doorScreen.actions, { command: 'EXIT', label: 'EXIT' }],
+      hint: text.doorHint,
+      actions: [...doorScreen.actions, { command: 'EXIT', label: actions.EXIT }],
     };
   }
 
-  function show(result: DoorResult): ReturnType<typeof bbs.dispatch> {
+  function show(result: DoorResult): DispatchResult {
     if (result.kind === 'screen') {
       doorScreen = result.screen;
-      return { output: { tone: 'system', lines: [...doorScreen.lines, screen().hint] } };
+      return { output: [{ tone: 'door', lines: [...doorScreen.lines, screen().hint] }] };
     }
     doorScreen = undefined;
     if (result.kind === 'unavailable') {
-      return { output: { tone: 'system', lines: ['DOOR UNAVAILABLE.', bbs.screen().hint] } };
+      return { output: [{ tone: 'restricted', lines: [text.doorUnavailable, bbs.screen().hint] }] };
     }
     const menu = bbs.dispatch('MENU');
     if (result.kind === 'exit') return menu;
-    const error = offer.board.doorError ?? 'DOOR CARRIER LOST. BACK AT THE BOARD.';
-    return { output: { tone: 'system', lines: [error, ...menu.output.lines] } };
+    const error = offer.board.doorError ?? text.doorError;
+    return { output: [{ tone: 'network-error', lines: [error] }, ...menu.output] };
   }
 
-  async function dispatch(command: string): Promise<ReturnType<typeof bbs.dispatch> | undefined> {
+  async function dispatch(command: string): Promise<DispatchResult | undefined> {
     if (opening) return;
     if (doorScreen) {
       return show(command.trim().toUpperCase() === 'EXIT' ? host.exit() : host.input(command));
     }
     const result = bbs.dispatch(command);
-    if (!result.opensDoor) return result;
+    const id = result.opensDoor;
+    if (!id) return result;
     opening = true;
     try {
-      return show(await host.launch(result.opensDoor));
+      const launched = await host.launch(id);
+      const next = show(launched);
+      return launched.kind === 'screen'
+        ? { ...next, effect: { history: { kind: 'door', id } } }
+        : next;
     } finally {
       opening = false;
     }
