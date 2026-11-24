@@ -1,6 +1,7 @@
 import type { Scene } from '../app/scenes.ts';
 import { createTerminal, type Terminal } from '../terminal/terminal.ts';
-import { createBbs, type BbsEffect, type BbsTone } from './bbs.ts';
+import type { BbsEffect, BbsTone } from './bbs.ts';
+import type { BbsDoorSession, createBbsDoorSession } from './door-session.ts';
 
 const labels: Record<BbsTone, string> = {
   system: 'SYSTEM',
@@ -10,8 +11,8 @@ const labels: Record<BbsTone, string> = {
 
 export function createBbsScene(
   root: HTMLElement,
-  offer: Parameters<typeof createBbs>[0],
-  identity: Parameters<typeof createBbs>[1],
+  bbs: BbsDoorSession,
+  identity: Parameters<typeof createBbsDoorSession>[1],
   onEffect: (effect: BbsEffect) => void,
   onDisconnect: () => void,
 ): Scene {
@@ -22,11 +23,12 @@ export function createBbsScene(
       document.body.dataset['scene'] = 'bbs';
       const active = createTerminal(root, 'BBS>');
       terminal = active;
-      const bbs = createBbs(offer, identity);
       let handleInput: HTMLInputElement | undefined;
 
-      function run(command: string, fromHandleForm = false): void {
-        const { output, effect } = bbs.dispatch(command);
+      async function run(command: string, fromHandleForm = false): Promise<void> {
+        const result = await bbs.dispatch(command);
+        if (!result || terminal !== active) return;
+        const { output, effect } = result;
         if (effect) onEffect(effect);
         const { phase, actions, hint } = bbs.screen();
         if (phase === 'offline') {
@@ -39,8 +41,12 @@ export function createBbsScene(
         }
         active.menu(
           actions.map(({ command, label }) => ({
-            key: command.startsWith('READ ') ? command : undefined,
+            key:
+              /^(READ|OPEN) /.test(command) || (phase === 'door' && command !== 'EXIT')
+                ? command
+                : undefined,
             label,
+            acceptLabel: !command.startsWith('OPEN ') && phase !== 'door',
             run: command === 'LOGIN' ? openHandleForm : () => run(command),
           })),
         );
@@ -82,8 +88,9 @@ export function createBbsScene(
       }
 
       active.onCommand(run);
-      run('CONNECT');
-      active.print([bbs.screen().hint], 'dim');
+      void run('CONNECT').then(() => {
+        if (terminal === active) active.print([bbs.screen().hint], 'dim');
+      });
     },
     dispose() {
       terminal?.dispose();

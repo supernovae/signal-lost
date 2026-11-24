@@ -9,6 +9,8 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 | `src/app`       | Bootstrap wiring, scene lifecycle, opening, hub, ending, tool list, settings                  | Yes                     |
 | `src/render`    | Three.js environment. `loop.ts` and `host.ts` hold its scheduling and ownership as pure logic | `environment.ts` only   |
 | `src/terminal`  | The terminal: log, menu, command input, tool panel                                            | Yes                     |
+| `src/bbs`       | Board sign-in, messages, door directory and terminal routing                                  | `bbs-view.ts` only      |
+| `src/doors`     | Door contract, registry, lifecycle, scoped checkpoints and declared rewards                   | No                      |
 | `src/signal`    | Seeded waterfall, SNR, lock evaluation (pure), and the analyzer view                          | `analyzer-view.ts` only |
 | `src/puzzle`    | Answer evaluation and game state (pure), and decoder and inquiry views                        | `*-view.ts` only        |
 | `src/narrative` | `DialogueSource` and scripted dialogue                                                        | No                      |
@@ -39,7 +41,14 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 - New transmissions, archive entries and community packages: JSON only.
 - New map locations and ECHO lines: JSON only.
 - A new puzzle kind: a schema, an evaluation case, and a view.
-- A new door game or instrument: a tool in `src/app/tools.ts` plus its own module.
+- A new declarative door goes in `content/doors/`. The content loader discovers its JSON and the BBS lists it when its entry condition holds.
+- A reviewed TypeScript door exports its `defineDoor` lifecycle from a module registered through a literal lazy import in the build-time catalog. The shared validator reads catalog metadata, and the registry loads the module when a signed-in player selects it. [Code door catalog](../src/doors/code-doors.ts)
+
+## How a door runs
+
+The descriptor declares the door's ID, name, description, author attribution, version, entry condition, rewards and return destination. Each implementation supplies a saved-state schema and a completion rule. The lifecycle launches a fresh visit or restores a checkpoint, handles input, saves its state as JSON, and handles exit. Callbacks receive a read-only fact query and work with state local to their visit. The BBS renders their screen text and commands in the shared terminal. [Door contract](../src/doors/contract.ts) · [BBS routing](../src/bbs/door-session.ts)
+
+The host checks entry requirements and reads the slot keyed by the selected door ID. A missing slot, version mismatch or invalid payload starts a fresh visit. Each successful input or exit writes the validated checkpoint and any newly earned declared rewards together. The BBS evaluates board status conditions against those saved facts. EXIT returns to the signed-in main menu. A lifecycle, module-load or persistence failure also returns there with the board's error message and the previous save intact. [Door host](../src/doors/host.ts)
 
 ## Determinism and tests
 

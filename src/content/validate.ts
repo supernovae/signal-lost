@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { CODE_DOORS } from '../doors/code-doors.ts';
+import type { CodeDoorRegistration } from '../doors/contract.ts';
 import { FACT_KINDS, factsIn, type Condition, type FactPrefix } from './conditions.ts';
 import {
   CONTENT_SCHEMA_VERSION,
@@ -13,12 +15,15 @@ import {
   bbsMessageSchema,
   characterSchema,
   communitySchema,
+  doorMetadataSchema,
   episodeSchema,
   puzzleSchema,
   screenSchema,
   sectorSchema,
   transmissionSchema,
+  triviaDoorSchema,
   type Content,
+  type DoorMetadata,
 } from './schema.ts';
 
 export interface ContentError {
@@ -47,6 +52,7 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   transmissions: transmissionSchema,
   archives: archiveSchema,
   bbs: z.discriminatedUnion('kind', [bbsBoardSchema, bbsMessageSchema]),
+  doors: triviaDoorSchema,
   characters: characterSchema,
   sectors: sectorSchema,
   artifacts: artifactSchema,
@@ -60,7 +66,10 @@ function kindOf(path: string): keyof Content | undefined {
   return directory && directory in SCHEMAS ? (directory as keyof Content) : undefined;
 }
 
-export function loadContent(files: Record<string, unknown>): LoadResult {
+export function loadContent(
+  files: Record<string, unknown>,
+  codeDoors: readonly CodeDoorRegistration[] = CODE_DOORS,
+): LoadResult {
   const errors: ContentError[] = [];
   const content: Content = {
     episodes: [],
@@ -68,6 +77,7 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
     transmissions: [],
     archives: [],
     bbs: [],
+    doors: [],
     characters: [],
     sectors: [],
     artifacts: [],
@@ -76,6 +86,12 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
   };
   const sources = new Map<object, { file: string; prefix: string }>();
   const entries: ManifestEntry[] = [];
+
+  function recordIssues(file: string, error: z.ZodError): void {
+    for (const issue of error.issues) {
+      errors.push({ file, field: issue.path.join('.') || '(root)', message: issue.message });
+    }
+  }
 
   for (const file of Object.keys(files).sort()) {
     const raw = files[file];
@@ -90,9 +106,7 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
     }
     const parsed = SCHEMAS[kind].safeParse(raw);
     if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        errors.push({ file, field: issue.path.join('.') || '(root)', message: issue.message });
-      }
+      recordIssues(file, parsed.error);
       continue;
     }
     const value = parsed.data as never;
@@ -114,8 +128,18 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
     }
   }
 
-  checkDuplicates(content, sources, errors);
-  checkReferences(content, sources, errors);
+  const doors: DoorMetadata[] = [...content.doors];
+  for (const { metadata, source } of codeDoors) {
+    const parsed = doorMetadataSchema.safeParse(metadata);
+    if (!parsed.success) {
+      recordIssues(source, parsed.error);
+      continue;
+    }
+    doors.push(parsed.data);
+    sources.set(parsed.data, { file: source, prefix: '' });
+  }
+  checkDuplicates(content, doors, sources, errors);
+  checkReferences(content, doors, sources, errors);
 
   entries.sort((a, b) => `${a.kind}/${a.id}`.localeCompare(`${b.kind}/${b.id}`));
   return {
@@ -131,10 +155,15 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
 
 type Sources = Map<object, { file: string; prefix: string }>;
 
-function checkDuplicates(content: Content, sources: Sources, errors: ContentError[]): void {
+function checkDuplicates(
+  content: Content,
+  doors: readonly DoorMetadata[],
+  sources: Sources,
+  errors: ContentError[],
+): void {
   for (const kind of Object.keys(content) as (keyof Content)[]) {
     const seen = new Map<string, string>();
-    for (const record of content[kind]) {
+    for (const record of kind === 'doors' ? doors : content[kind]) {
       const { file, prefix } = sources.get(record)!;
       const first = seen.get(record.id);
       if (first) {
@@ -150,7 +179,12 @@ function checkDuplicates(content: Content, sources: Sources, errors: ContentErro
   }
 }
 
-function checkReferences(content: Content, sources: Sources, errors: ContentError[]): void {
+function checkReferences(
+  content: Content,
+  doors: readonly DoorMetadata[],
+  sources: Sources,
+  errors: ContentError[],
+): void {
   const ids = Object.fromEntries(
     (Object.keys(content) as (keyof Content)[]).map((kind) => [
       kind,
@@ -164,6 +198,7 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
   }
   content.sectors.forEach((s) => s.grantsOnEnter.forEach((g) => granted.add(g)));
   content.artifacts.forEach((a) => a.grantsOnOpen.forEach((g) => granted.add(g)));
+  doors.forEach((door) => door.rewards.forEach((g) => granted.add(g)));
 
   const checkFact = (fact: string, record: object, field: string, isGrant: boolean): void => {
     const { file, prefix } = sources.get(record)!;
@@ -198,6 +233,10 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
     checkCondition(puzzle.requires, puzzle, 'requires');
     puzzle.grants.forEach((g, i) => checkFact(g, puzzle, `grants.${i}`, true));
   }
+  for (const door of doors) {
+    checkCondition(door.requires, door, 'requires');
+    door.rewards.forEach((g, i) => checkFact(g, door, `rewards.${i}`, true));
+  }
   for (const record of [...content.transmissions, ...content.archives, ...content.artifacts]) {
     checkCondition(record.requires, record, 'requires');
   }
@@ -211,6 +250,7 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
       continue;
     }
     checkCondition(entry.requires, entry, 'requires');
+    entry.status.forEach(({ when }, i) => checkCondition(when, entry, `status.${i}.when`));
     entry.archiveIds.forEach((id, index) => {
       if (!ids.archives.has(id)) {
         errors.push({ file, field: `archiveIds.${index}`, message: `unknown archive "${id}"` });

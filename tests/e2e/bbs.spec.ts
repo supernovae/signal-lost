@@ -22,7 +22,7 @@ async function typeCommand(page: Page, prompt: 'OBS>' | 'BBS>', command: string)
   await page.keyboard.press('Enter');
 }
 
-test('keyboard first contact from a migrated completed save', async ({ page }) => {
+test('keyboard first contact and relay trivia from a migrated completed save', async ({ page }) => {
   await seedSaveOnce(page, completedV1);
   await page.goto('./');
   await joinWithEnter(page);
@@ -43,6 +43,37 @@ test('keyboard first contact from a migrated completed save', async ({ page }) =
   await typeCommand(page, 'BBS>', 'MENU');
   await typeCommand(page, 'BBS>', 'SYSOP');
   await expect(log.locator('.sysop')).toContainText('I am the local preservation routine.');
+  await typeCommand(page, 'BBS>', 'MENU');
+  await expect(log).not.toContainText('RELAY DRILL: COMPLETE');
+  await typeCommand(page, 'BBS>', 'DOORS');
+  const system = log.locator('.system').last();
+  await expect(system).toContainText('DEEP FIELD DOOR DIRECTORY');
+  await typeCommand(page, 'BBS>', 'OPEN relay-trivia');
+  await expect(system).toContainText('Which port gets the dummy load for a bench-only test?');
+  await typeCommand(page, 'BBS>', '2');
+  await expect(system).toContainText('Which kit lets you monitor the receiver');
+  await typeCommand(page, 'BBS>', '1');
+  await expect(system).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
+  await typeCommand(page, 'BBS>', 'EXIT');
+  await expect(system).toContainText('DEEP FIELD MAIN MENU');
+  await expect(system).toContainText('RELAY DRILL: COMPLETE');
+  await expect(page.getByLabel('BBS>')).toBeFocused();
+  await expect(log.getByText('SIGNED IN AS OBS-02FF', { exact: true })).toHaveCount(1);
+
+  await page.reload();
+  await joinWithEnter(page);
+  await typeCommand(page, 'OBS>', 'CONNECT');
+  await typeCommand(page, 'BBS>', 'DESIGNATION');
+  await expect(system).toContainText('RELAY DRILL: COMPLETE');
+  await typeCommand(page, 'BBS>', 'MESSAGES');
+  await expect(page.getByRole('button', { name: '[READ 1] LAST ONE OUT [READ]' })).toBeVisible();
+  await typeCommand(page, 'BBS>', 'MENU');
+  await typeCommand(page, 'BBS>', 'DOORS');
+  await typeCommand(page, 'BBS>', 'OPEN relay-trivia');
+  await expect(system).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
+  await typeCommand(page, 'BBS>', 'EXIT');
+  await expect(system).toContainText('DEEP FIELD MAIN MENU');
+
   await typeCommand(page, 'BBS>', 'DISCONNECT');
   await expect(page.getByLabel('OBS>')).toBeFocused();
   await expect(log).toContainText('OBSERVER NETWORK CLIENT');

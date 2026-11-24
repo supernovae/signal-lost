@@ -1,5 +1,6 @@
 import { evaluate } from '../content/conditions.ts';
 import type { Archive, BbsBoard, Content } from '../content/schema.ts';
+import type { DoorListing } from '../doors/registry.ts';
 import { normalizeHandle } from '../progress/save.ts';
 
 type MessageFields = Pick<Archive, 'title' | 'from' | 'date' | 'body'>;
@@ -31,7 +32,7 @@ export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOf
   return { board, messages };
 }
 
-type Phase = 'offline' | 'login' | 'menu' | 'messages' | 'message' | 'sysop';
+type Phase = 'offline' | 'login' | 'menu' | 'messages' | 'message' | 'sysop' | 'doors';
 export type BbsTone = 'system' | 'history' | 'sysop';
 type Output = { tone: BbsTone; lines: readonly string[] };
 export type BbsEffect = { handle: string } | { readKey: string };
@@ -50,6 +51,12 @@ interface Screen {
 interface DispatchResult {
   output: Output;
   effect?: BbsEffect;
+  opensDoor?: string;
+}
+
+interface BbsDoors {
+  list(): readonly DoorListing[];
+  facts(): ReadonlySet<string>;
 }
 
 const help = { command: 'HELP', label: 'HELP' };
@@ -59,6 +66,7 @@ const menu = { command: 'MENU', label: 'MAIN MENU' };
 export function createBbs(
   { board, messages }: BbsOffer,
   identity: { designation: string | null; handle: string | null; readMessages: readonly string[] },
+  doors?: BbsDoors,
 ) {
   const read = new Set(identity.readMessages);
   let customHandle = identity.handle;
@@ -90,14 +98,30 @@ export function createBbs(
       case 'menu':
         return {
           phase,
-          hint: 'TYPE MESSAGES, SYSOP, HELP OR DISCONNECT, OR SELECT AN OPTION.',
+          hint: `TYPE MESSAGES, SYSOP, ${doors ? 'DOORS, ' : ''}HELP OR DISCONNECT, OR SELECT AN OPTION.`,
           actions: [
             { command: 'MESSAGES', label: 'MESSAGES' },
             { command: 'SYSOP', label: 'SYSOP' },
+            ...(doors ? [{ command: 'DOORS', label: 'DOORS' }] : []),
             help,
             disconnect,
           ],
         };
+      case 'doors': {
+        const available = doors?.list() ?? [];
+        return {
+          phase,
+          hint: available.length
+            ? 'TYPE OPEN <ID> OR SELECT A DOOR. TYPE MENU TO RETURN.'
+            : 'NO DOORS AVAILABLE. TYPE MENU TO RETURN.',
+          actions: [
+            ...available.map(({ id, name }) => ({ command: `OPEN ${id}`, label: name })),
+            menu,
+            help,
+            disconnect,
+          ],
+        };
+      }
       case 'messages':
         return {
           phase,
@@ -130,11 +154,18 @@ export function createBbs(
 
   function enter(next: Phase, ...lines: string[]): DispatchResult {
     phase = next;
+    if (next === 'menu') {
+      const facts = doors?.facts() ?? new Set<string>();
+      lines.push(
+        `${board.title} MAIN MENU`,
+        ...board.status.filter(({ when }) => evaluate(when, facts)).map(({ text }) => text),
+      );
+    }
     return system(...lines, screen().hint);
   }
 
   function signIn(handle: string): DispatchResult {
-    return enter('menu', `SIGNED IN AS ${handle}`, `${board.title} MAIN MENU`);
+    return enter('menu', `SIGNED IN AS ${handle}`);
   }
 
   function dispatch(command: string): DispatchResult {
@@ -169,6 +200,15 @@ export function createBbs(
     }
     if (phase === 'menu' && !hasArgument) {
       if (action === 'MESSAGES') return enter('messages', `${board.title} MESSAGES`);
+      if (action === 'DOORS' && doors) {
+        return enter(
+          'doors',
+          `${board.title} DOOR DIRECTORY`,
+          ...doors
+            .list()
+            .map(({ id, name, description }) => `OPEN ${id} | ${name} | ${description}`),
+        );
+      }
       if (action === 'SYSOP') {
         phase = 'sysop';
         return { output: { tone: 'sysop', lines: board.sysopGreeting } };
@@ -190,8 +230,13 @@ export function createBbs(
       read.add(message.key);
       return { ...result, effect: { readKey: message.key } };
     }
-    if ((phase === 'messages' || phase === 'message' || phase === 'sysop') && !hasArgument) {
-      if (action === 'MENU') return enter('menu', `${board.title} MAIN MENU`);
+    if (phase === 'doors' && action === 'OPEN') {
+      const [id] = args;
+      if (args.length !== 1 || !id) return system('SELECT A DOOR FROM THE LIST.', screen().hint);
+      return { ...system(screen().hint), opensDoor: id.toLowerCase() };
+    }
+    if (phase !== 'login' && phase !== 'menu' && !hasArgument && action === 'MENU') {
+      return enter('menu');
     }
     return system('COMMAND UNAVAILABLE HERE.', screen().hint);
   }

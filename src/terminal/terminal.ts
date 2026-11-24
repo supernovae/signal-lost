@@ -1,6 +1,7 @@
 export interface MenuItem {
   key?: string;
   label: string;
+  acceptLabel?: boolean;
   run(): void;
 }
 
@@ -65,7 +66,9 @@ export function createTerminal(root: HTMLElement, promptLabel = 'OBS>'): Termina
     line.textContent = `${promptLabel} ${command}`;
     log.append(line);
     const match = items.find(
-      (item) => item.key === command || item.label.toUpperCase() === command.toUpperCase(),
+      (item) =>
+        item.key === command ||
+        (item.acceptLabel !== false && item.label.toUpperCase() === command.toUpperCase()),
     );
     if (match) match.run();
     else handler(command);

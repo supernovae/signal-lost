@@ -147,6 +147,8 @@ export const bbsBoardSchema = z.strictObject({
   banner: text.min(1),
   sysopGreeting: text.min(1),
   archiveIds: z.array(id),
+  status: z.array(z.strictObject({ when: condition, text: z.string().min(1) })).default([]),
+  doorError: z.string().min(1).optional(),
 });
 
 export const bbsMessageSchema = z.strictObject({
@@ -157,6 +159,37 @@ export const bbsMessageSchema = z.strictObject({
   from: z.string().min(1),
   date: z.string().min(1),
   body: text.min(1),
+});
+
+export const doorMetadataSchema = z.strictObject({
+  ...record,
+  attribution,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  version: z.number().int().positive(),
+  requires: condition,
+  rewards: z.array(fact),
+  returnTo: z.literal('bbs-menu'),
+});
+
+const triviaQuestion = z
+  .strictObject({
+    prompt: text.min(1),
+    options: z.array(z.string().min(1)).min(2),
+    answer: z.number().int().nonnegative(),
+    retry: text.min(1),
+  })
+  .refine(({ answer, options }) => answer < options.length, {
+    path: ['answer'],
+    message: 'answer must be a zero-based index into options',
+  });
+
+export const triviaDoorSchema = doorMetadataSchema.extend({
+  kind: z.literal('trivia'),
+  saveState: z.literal('question-index'),
+  completion: z.literal('all-correct'),
+  questions: z.array(triviaQuestion).min(1),
+  success: text.min(1),
 });
 
 export const characterSchema = z.strictObject({
@@ -220,6 +253,8 @@ export type Transmission = z.infer<typeof transmissionSchema>;
 export type Archive = z.infer<typeof archiveSchema>;
 export type BbsBoard = z.infer<typeof bbsBoardSchema>;
 export type BbsMessage = z.infer<typeof bbsMessageSchema>;
+export type DoorMetadata = z.infer<typeof doorMetadataSchema>;
+export type TriviaDoor = z.infer<typeof triviaDoorSchema>;
 export type Character = z.infer<typeof characterSchema>;
 export type DialogueLine = Character['lines'][number];
 export type Sector = z.infer<typeof sectorSchema>;
@@ -233,6 +268,7 @@ export interface Content {
   transmissions: Transmission[];
   archives: Archive[];
   bbs: (BbsBoard | BbsMessage)[];
+  doors: TriviaDoor[];
   characters: Character[];
   sectors: Sector[];
   artifacts: Artifact[];

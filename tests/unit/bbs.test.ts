@@ -92,6 +92,33 @@ describe('the DEEP FIELD session', () => {
     expect(reconnected.dispatch('READ 1').effect).toBeUndefined();
   });
 
+  it('offers the directory after sign-in and returns to a menu with live board status', () => {
+    const facts = new Set(completed);
+    const [relay] = content.doors;
+    const bbs = createBbs(offer, identity, { list: () => [relay!], facts: () => facts });
+    bbs.dispatch('CONNECT');
+    expect(bbs.screen().actions.map(({ command }) => command)).not.toContain('DOORS');
+    expect(bbs.dispatch('OPEN relay-trivia').opensDoor).toBeUndefined();
+    expect(bbs.dispatch('DESIGNATION').output.lines).not.toContain('RELAY DRILL: COMPLETE');
+    expect(bbs.screen().actions.map(({ command }) => command)).toEqual([
+      'MESSAGES',
+      'SYSOP',
+      'DOORS',
+      'HELP',
+      'DISCONNECT',
+    ]);
+    expect(bbs.dispatch('DOORS').output.lines).toContain('DEEP FIELD DOOR DIRECTORY');
+    expect(bbs.screen().actions[0]).toEqual({
+      command: 'OPEN relay-trivia',
+      label: 'RELAY TRIVIA',
+    });
+    expect(bbs.dispatch('OPEN relay-trivia extra').opensDoor).toBeUndefined();
+    expect(bbs.dispatch('open RELAY-TRIVIA').opensDoor).toBe('relay-trivia');
+    facts.add('flag:relay-trivia-complete');
+    expect(bbs.dispatch('MENU').output.lines).toContain('RELAY DRILL: COMPLETE');
+    expect(bbs.screen().phase).toBe('menu');
+  });
+
   it('gives contextual help and keeps the current screen and effects on refusal', () => {
     const bbs = createBbs(offer, { ...identity, designation: null });
     expect(bbs.dispatch('MESSAGES').output.lines).toEqual([bbs.screen().hint]);

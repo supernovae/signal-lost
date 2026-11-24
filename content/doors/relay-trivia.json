@@ -1,0 +1,34 @@
+{
+  "kind": "trivia",
+  "id": "relay-trivia",
+  "name": "RELAY TRIVIA",
+  "description": "A two-question equipment drill from the DEEP FIELD training shelf.",
+  "attribution": { "author": "SIGNAL//LOST contributors" },
+  "version": 1,
+  "requires": "completed:episode.000",
+  "saveState": "question-index",
+  "completion": "all-correct",
+  "rewards": ["flag:relay-trivia-complete"],
+  "returnTo": "bbs-menu",
+  "questions": [
+    {
+      "prompt": [
+        "BENCH CARD: The dummy load absorbs the test signal at the bench. The antenna sends it out.",
+        "Which port gets the dummy load for a bench-only test?"
+      ],
+      "options": ["The audio input", "The transmitter output", "The keyboard socket"],
+      "answer": 1,
+      "retry": ["Follow the test signal from the transmitter to the load."]
+    },
+    {
+      "prompt": [
+        "BENCH CARD: A room mic picks up nearby sound. Headphones keep the receiver audio at your ears.",
+        "Which kit lets you monitor the receiver without waking the night shift?"
+      ],
+      "options": ["Headphones", "Room mic", "Desk speaker"],
+      "answer": 0,
+      "retry": ["Look for the kit that keeps audio at your ears."]
+    }
+  ],
+  "success": ["DRILL COMPLETE. TRAINING RECORD LOGGED."]
+}
