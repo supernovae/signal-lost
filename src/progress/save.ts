@@ -34,14 +34,22 @@ export function normalizeHandle(handle: string | null): string | null {
   return trimmed ? Array.from(trimmed).slice(0, 32).join('').trimEnd() : null;
 }
 
+const orderedIds = z
+  .array(z.string())
+  .catch([])
+  .default([])
+  .transform((ids) => [...new Set(ids)]);
+
+const eventsSchema = z
+  .object({ fired: orderedIds, bulletins: orderedIds })
+  .catch({ fired: [], bulletins: [] })
+  .prefault({});
+
 const saveSchema = globalSchema.extend({
   schemaVersion: z.literal(SAVE_SCHEMA_VERSION),
   bbs: bbsProgressSchema,
-  bbsReadMessages: z
-    .array(z.string())
-    .catch([])
-    .default([])
-    .transform((keys) => [...new Set(keys)]),
+  bbsReadMessages: orderedIds,
+  events: eventsSchema,
   profile: z.object({
     handle: z.string().nullable().transform(normalizeHandle),
     designation: z.string().nullable(),
@@ -90,6 +98,7 @@ export function freshSave(seed = createSaveSeed()): SaveData {
     preferences: { ...DEFAULT_PREFERENCES },
     bbs: bbsProgressSchema.parse(undefined),
     bbsReadMessages: [],
+    events: eventsSchema.parse(undefined),
     profile: { handle: null, designation: null, accessLevel: null, seed },
     doorState: {},
   };
@@ -172,6 +181,7 @@ export function loadSave(
           schemaVersion: SAVE_SCHEMA_VERSION,
           bbs: bbsProgressSchema.parse(undefined),
           bbsReadMessages: [],
+          events: eventsSchema.parse(undefined),
           profile: { handle: null, designation, accessLevel: null, seed: seed() },
           doorState: {},
         };
@@ -235,6 +245,9 @@ export function factsOf(data: SaveData): Set<string> {
   const facts = new Set<string>();
   for (const [prefix, field] of Object.entries(FACT_FIELDS)) {
     for (const id of data[field]) facts.add(`${prefix}:${id}`);
+  }
+  for (const key of data.bbsReadMessages) {
+    if (key.startsWith('message:')) facts.add(`bbs-read:${key.slice('message:'.length)}`);
   }
   return facts;
 }

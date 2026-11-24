@@ -15,6 +15,7 @@ const text = z.array(z.string());
 const condition: z.ZodType<Condition> = z.lazy(() =>
   z.union([
     fact,
+    z.string().regex(/^bbs-read:[a-z0-9]+([.-][a-z0-9]+)*$/),
     z.strictObject({ all: z.array(condition) }),
     z.strictObject({ any: z.array(condition) }),
     z.strictObject({ not: condition }),
@@ -144,18 +145,24 @@ export const archiveSchema = z.strictObject({
   searchOnly: z.boolean().default(false),
 });
 
-export const bbsBoardSchema = z.strictObject({
-  ...record,
-  kind: z.literal('board'),
-  title: z.string().min(1),
-  requires: condition,
-  notice: z.string().min(1),
-  banner: text.min(1),
-  sysopGreeting: text.min(1),
-  archiveIds: z.array(id),
-  status: z.array(z.strictObject({ when: condition, text: z.string().min(1) })).default([]),
-  doorError: z.string().min(1).optional(),
-});
+export const bbsBoardSchema = z
+  .strictObject({
+    ...record,
+    kind: z.literal('board'),
+    title: z.string().min(1),
+    requires: condition,
+    notice: z.string().min(1),
+    banner: text.min(1),
+    sysopGreeting: text.min(1).optional(),
+    sysopCharacterId: id.optional(),
+    archiveIds: z.array(id),
+    status: z.array(z.strictObject({ when: condition, text: z.string().min(1) })).default([]),
+    doorError: z.string().min(1).optional(),
+  })
+  .refine(({ sysopGreeting, sysopCharacterId }) => sysopGreeting || sysopCharacterId, {
+    path: ['sysopCharacterId'],
+    message: 'a BBS endpoint needs a SYSOP character or static greeting',
+  });
 
 export const bbsMessageSchema = z.strictObject({
   ...record,
@@ -167,6 +174,20 @@ export const bbsMessageSchema = z.strictObject({
   from: z.string().min(1),
   date: z.string().min(1),
   body: text.min(1),
+  eventOnly: z.boolean().default(false),
+});
+
+export const eventSchema = z.strictObject({
+  ...record,
+  when: condition,
+  effects: z
+    .array(
+      z.discriminatedUnion('kind', [
+        z.strictObject({ kind: z.literal('grant-flag'), flag: id }),
+        z.strictObject({ kind: z.literal('post-bulletin'), messageId: id }),
+      ]),
+    )
+    .min(1),
 });
 
 export const bbsMessageBoardSchema = z.strictObject({
@@ -225,6 +246,7 @@ export const bbsPublicCommands = [
   'REPLY',
   'PEOPLE',
   'PROFILE',
+  'TALK',
   'DIRECTORY',
   'NETWORK',
   'HISTORY',
@@ -297,6 +319,8 @@ export const bbsInterfaceSchema = z.strictObject({
     credit: z.string(),
     read: z.string(),
     unread: z.string(),
+    newItem: z.string(),
+    noDialogue: z.string(),
     marked: z.string(),
     profile: z.string(),
     chosen: z.string(),
@@ -357,7 +381,7 @@ export const characterSchema = z.strictObject({
   lines: z.array(
     z.strictObject({
       id,
-      kind: z.enum(['reaction', 'hint', 'idle']),
+      kind: z.enum(['reaction', 'hint', 'idle', 'bbs']),
       when: condition.optional(),
       failures: z.strictObject({ puzzle: id, atLeast: z.number().int().positive() }).optional(),
       text,
@@ -412,6 +436,7 @@ export type Transmission = z.infer<typeof transmissionSchema>;
 export type Archive = z.infer<typeof archiveSchema>;
 export type BbsBoard = z.infer<typeof bbsBoardSchema>;
 export type BbsMessage = z.infer<typeof bbsMessageSchema>;
+export type NetworkEvent = z.infer<typeof eventSchema>;
 export type BbsRecord = z.infer<typeof bbsSchema>;
 export type BbsThread = z.infer<typeof bbsThreadSchema>;
 export type BbsTone = (typeof bbsTones)[number];
@@ -430,6 +455,7 @@ export interface Content {
   transmissions: Transmission[];
   archives: Archive[];
   bbs: BbsRecord[];
+  events: NetworkEvent[];
   doors: TriviaDoor[];
   characters: Character[];
   sectors: Sector[];

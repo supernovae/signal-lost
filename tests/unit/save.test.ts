@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
-import { applyBbsEffect } from '../../src/bbs/progress.ts';
+import { applyBbsEffect, createBbsProgress } from '../../src/bbs/progress.ts';
 import { bbsThemeIds } from '../../src/bbs/themes.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import { loadContent } from '../../src/content/validate.ts';
+import { settleEvents } from '../../src/progress/events.ts';
 import {
   addFact,
   DEFAULT_PREFERENCES,
@@ -119,6 +120,7 @@ describe('save data', () => {
       bbs: { replies: {}, discoveries: [], history: [] },
       schemaVersion: 2,
       bbsReadMessages: [],
+      events: { fired: [], bulletins: [] },
       profile: { handle: null, designation, accessLevel: null, seed: 123 },
       doorState: {},
     });
@@ -155,11 +157,53 @@ describe('save data', () => {
     };
     delete old['bbsReadMessages'];
     delete old['bbs'];
+    delete old['events'];
     const session = openSaveSession(memoryStorage(JSON.stringify(old)));
     expect(session.status).toBe('loaded');
     expect(session.data).toEqual(data);
     expect(session.data.bbs.history).toEqual([]);
     expect(getBbsOffer(content, factsOf(session.data))?.board.id).toBe('deep-field');
+  });
+
+  it('reconciles a qualifying pre-event v2 read once on connect and persists the result', () => {
+    const data = freshSave(42);
+    data.bbsReadMessages = ['message:relay-note'];
+    const old: Record<string, unknown> = { ...data };
+    delete old['events'];
+    const storage = memoryStorage(JSON.stringify(old));
+    const loaded = openSaveSession(storage, seed);
+    const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
+    expect(loaded.status).toBe('loaded');
+    expect(loaded.data.events).toEqual({ fired: [], bulletins: [] });
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(createBbsProgress(loaded.data, settle, loaded.persist).connect()).toBe(true);
+    expect(storage.setItem).toHaveBeenCalledOnce();
+
+    const reloaded = openSaveSession(storage, seed);
+    expect(reloaded.data.flags).toEqual(['relay-note-read']);
+    expect(reloaded.data.events).toEqual({
+      fired: ['relay-read', 'relay-bulletin'],
+      bulletins: ['relay-bulletin'],
+    });
+    expect(createBbsProgress(reloaded.data, settle, reloaded.persist).connect()).toBe(true);
+    expect(storage.setItem).toHaveBeenCalledOnce();
+  });
+
+  it('recovers malformed event state and deduplicates valid IDs in saved order', () => {
+    const data = freshSave(42);
+    data.flags.push('kept');
+    const duplicates = {
+      ...data,
+      events: { fired: ['b', 'a', 'b'], bulletins: ['second', 'first', 'second'] },
+    };
+    expect(loadSave(memoryStorage(JSON.stringify(duplicates)))).toEqual({
+      status: 'loaded',
+      data: { ...data, events: { fired: ['b', 'a'], bulletins: ['second', 'first'] } },
+    });
+    expect(loadSave(memoryStorage(JSON.stringify({ ...data, events: null })))).toEqual({
+      status: 'loaded',
+      data,
+    });
   });
 
   it('round-trips BBS progress independently of archive, dialogue and door progress', () => {
@@ -178,7 +222,7 @@ describe('save data', () => {
       profile: { ...data.profile, handle: 'Finch' },
       bbsReadMessages: ['archive:lore.last-sysop', 'message:post'],
     });
-    expect(factsOf(reopened.data)).toEqual(new Set(['read:manual.rev-c']));
+    expect(factsOf(reopened.data)).toEqual(new Set(['read:manual.rev-c', 'bbs-read:post']));
 
     for (const bbsReadMessages of ['broken', ['archive:lore.last-sysop', 123]]) {
       const malformed = memoryStorage(

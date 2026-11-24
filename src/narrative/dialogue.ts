@@ -15,6 +15,12 @@ export interface DialogueSource {
   next(kind: DialogueLine['kind'], state: DialogueState): DialogueLine | undefined;
 }
 
+export function createDialogueSources(
+  characters: readonly Character[],
+): ReadonlyMap<string, DialogueSource> {
+  return new Map(characters.map((character) => [character.id, createScriptedDialogue(character)]));
+}
+
 export function createScriptedDialogue(character: Character): DialogueSource {
   return {
     next(kind, state) {

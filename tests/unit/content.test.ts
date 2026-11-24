@@ -654,6 +654,185 @@ describe('diagnostics', () => {
   });
 });
 
+describe('network event and BBS dialogue references', () => {
+  const producerFile = 'content/events/producer.json';
+  const consumerFile = 'content/events/consumer.json';
+  const boardFile = 'content/bbs/board.json';
+  const bulletinFile = 'content/bbs/bulletin.json';
+  const characterFile = 'content/characters/sysop.json';
+  const producer = {
+    id: 'producer',
+    when: 'bbs-read:post',
+    effects: [{ kind: 'grant-flag', flag: 'receipt' }],
+  };
+  const consumer = {
+    id: 'consumer',
+    when: 'flag:receipt',
+    effects: [{ kind: 'post-bulletin', messageId: 'bulletin' }],
+  };
+  const greeting = { id: 'sysop.greeting', kind: 'bbs', text: ['Hello'] };
+  const followUp = { id: 'sysop.receipt', kind: 'bbs', text: ['Filed'], when: 'flag:receipt' };
+
+  function filesWithEvents(): Record<string, unknown> {
+    const files = validFiles();
+    Object.assign(files[boardFile] as object, {
+      status: [{ when: 'flag:receipt', text: 'Receipt filed' }],
+      sysopCharacterId: 'sysop',
+    });
+    return {
+      ...files,
+      [producerFile]: producer,
+      [consumerFile]: consumer,
+      [bulletinFile]: {
+        kind: 'message',
+        id: 'bulletin',
+        board: 'board',
+        title: 'Bulletin',
+        from: 'SYSOP',
+        date: 'UNDATED',
+        body: ['Filed'],
+        eventOnly: true,
+      },
+      [characterFile]: { id: 'sysop', name: 'SYSOP', lines: [greeting, followUp] },
+    };
+  }
+
+  it('includes events in the manifest and recognizes their flags across all conditions', () => {
+    const files = filesWithEvents();
+    const { errors, manifest } = loadContent(files);
+    expect(errors).toEqual([]);
+    expect(manifest.entries).toContainEqual({ kind: 'events', id: 'producer', file: producerFile });
+    delete files[producerFile];
+    expect(loadContent(files).errors).toEqual(
+      expect.arrayContaining(
+        [
+          [consumerFile, 'when'],
+          [boardFile, 'status.0.when'],
+          [characterFile, 'lines.1.when'],
+        ].map(([file, field]) => ({ file, field, message: 'nothing grants "flag:receipt"' })),
+      ),
+    );
+  });
+
+  it.each(['missing', 'board', 'post'])('rejects invalid bulletin target %s', (messageId) => {
+    const files = filesWithEvents();
+    files[consumerFile] = { ...consumer, effects: [{ kind: 'post-bulletin', messageId }] };
+    expect(firstError(files)).toEqual({
+      file: consumerFile,
+      field: 'effects.0.messageId',
+      message:
+        messageId === 'post'
+          ? 'bulletin message must set eventOnly'
+          : `unknown BBS message "${messageId}"`,
+    });
+  });
+
+  it('requires an event-only message to belong directly to an endpoint', () => {
+    const files = filesWithEvents();
+    files['content/bbs/room.json'] = {
+      kind: 'message-board',
+      id: 'room',
+      bbs: 'board',
+      title: 'Room',
+      description: [],
+    };
+    files[bulletinFile] = { ...(files[bulletinFile] as object), board: 'room' };
+    expect(firstError(files)).toEqual({
+      file: bulletinFile,
+      field: 'board',
+      message: 'an event bulletin must belong to a BBS endpoint',
+    });
+  });
+
+  it.each([
+    ['solved:missing', 'unknown fact "solved:missing": no puzzles record has id "missing"'],
+    ['bbs-read:missing', 'unknown BBS message "missing"'],
+    ['bbs-read:board', 'unknown BBS message "board"'],
+  ])('rejects unknown event condition %s', (when, message) => {
+    const files = filesWithEvents();
+    files[producerFile] = { ...producer, when };
+    expect(firstError(files)).toMatchObject({ file: producerFile, field: 'when', message });
+  });
+
+  it('allows a BBS read in conditions only', () => {
+    const files = filesWithEvents();
+    Object.assign(files['content/episodes/e.json'] as object, { grants: ['bbs-read:post'] });
+    expect(firstError(files)).toMatchObject({ file: 'content/episodes/e.json', field: 'grants.0' });
+  });
+
+  it('checks SYSOP references and requires a baseline BBS line', () => {
+    const files = filesWithEvents();
+    Object.assign(files[boardFile] as object, { sysopCharacterId: 'missing' });
+    expect(firstError(files)).toEqual({
+      file: boardFile,
+      field: 'sysopCharacterId',
+      message: 'unknown character "missing"',
+    });
+    Object.assign(files[boardFile] as object, { sysopCharacterId: 'sysop' });
+    for (const line of [
+      { ...greeting, once: true },
+      { ...greeting, when: 'flag:receipt' },
+    ]) {
+      files[characterFile] = { ...(files[characterFile] as object), lines: [line] };
+      expect(firstError(files)).toEqual({
+        file: boardFile,
+        field: 'sysopCharacterId',
+        message: 'SYSOP needs a repeatable, unconditional BBS line',
+      });
+    }
+  });
+
+  it('reports invalid dialogue references and cross-character line IDs', () => {
+    const files = filesWithEvents();
+    files[characterFile] = {
+      ...(files[characterFile] as object),
+      lines: [
+        greeting,
+        { ...followUp, id: 'l', when: 'bbs-read:missing' },
+        { ...followUp, failures: { puzzle: 'missing', atLeast: 1 } },
+      ],
+    };
+    expect(loadContent(files).errors).toEqual([
+      {
+        file: characterFile,
+        field: 'lines.1.id',
+        message: 'duplicate dialogue line id "l" (first defined in content/characters/echo.json)',
+      },
+      { file: characterFile, field: 'lines.1.when', message: 'unknown BBS message "missing"' },
+      {
+        file: characterFile,
+        field: 'lines.2.failures.puzzle',
+        message: 'unknown puzzle "missing"',
+      },
+    ]);
+  });
+
+  it('rejects an event depending on its own effect', () => {
+    const files = filesWithEvents();
+    files[producerFile] = { ...producer, when: 'flag:receipt' };
+    expect(firstError(files)).toEqual({
+      file: producerFile,
+      field: 'when',
+      message: 'event dependency cycle: producer -> producer',
+    });
+  });
+
+  it('rejects a two-event cycle through nested and negated conditions', () => {
+    const files = filesWithEvents();
+    files[producerFile] = { ...producer, when: { any: ['bbs-read:post', { not: 'flag:other' }] } };
+    files[consumerFile] = {
+      ...consumer,
+      when: { all: ['completed:e', 'flag:receipt'] },
+      effects: [{ kind: 'grant-flag', flag: 'other' }],
+    };
+    expect(firstError(files)).toEqual({
+      file: consumerFile,
+      field: 'when',
+      message: 'event dependency cycle: consumer -> producer -> consumer',
+    });
+  });
+});
+
 describe('entry points', () => {
   const roots: string[] = [];
   const tree = (name: string, value: unknown): string => {

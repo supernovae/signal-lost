@@ -3,14 +3,17 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createBbs, getBbsOffer, type DispatchResult } from '../../src/bbs/bbs.ts';
-import { applyBbsEffect } from '../../src/bbs/progress.ts';
+import { applyBbsEffect, createBbsProgress } from '../../src/bbs/progress.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import type { Content } from '../../src/content/schema.ts';
 import { loadContent } from '../../src/content/validate.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
 import { createDoorHost } from '../../src/doors/host.ts';
 import { createDoorRegistry } from '../../src/doors/registry.ts';
+import { createDialogueSources } from '../../src/narrative/dialogue.ts';
+import { settleEvents } from '../../src/progress/events.ts';
 import { factsOf, openSaveSession } from '../../src/progress/save.ts';
+import { createGame } from '../../src/puzzle/game.ts';
 import discoveryFixture from '../fixtures/bbs-discovery.json';
 
 const contentDir = resolve('content');
@@ -23,6 +26,10 @@ const banner = [
   'ACTIVE CONNECTIONS: UNKNOWN',
   'INCOMING CONNECTION ACCEPTED',
   'WELCOME TO THE ECHO NETWORK',
+];
+const sysopGreeting = [
+  'Observer. I am the local preservation routine.',
+  'Keel left the line open. I kept what the board could carry.',
 ];
 
 function memoryStorage(initial: string | null = null) {
@@ -60,16 +67,30 @@ function boardSession(
 ) {
   const { data, persist } = session;
   const registry = createDoorRegistry(records.doors);
-  const bbs = createBbs(offer(records), () => data, {
-    list: () => registry.list(factsOf(data)),
-    facts: liveFacts ?? (() => factsOf(data)),
-  });
+  const progress = createBbsProgress(
+    data,
+    (candidate) => settleEvents(records.events, candidate),
+    persist,
+  );
+  const game = createGame({ content: records, data, persist });
+  const voices = createDialogueSources(records.characters);
+  const bbs = createBbs(
+    offer(records),
+    () => data,
+    {
+      list: () => registry.list(factsOf(data)),
+      facts: liveFacts ?? (() => factsOf(data)),
+    },
+    (characterId) => {
+      const source = voices.get(characterId);
+      return source && game.say(source, 'bbs');
+    },
+  );
   function run(command: string) {
+    const wasOffline = bbs.screen().phase === 'offline';
     const result = bbs.dispatch(command);
-    if (result.effect) {
-      applyBbsEffect(data, result.effect);
-      persist();
-    }
+    if (wasOffline && bbs.screen().phase === 'login') progress.connect();
+    if (result.effect) progress.apply(result.effect);
     return result;
   }
   return {
@@ -117,12 +138,27 @@ describe('the DEEP FIELD session', () => {
     expect(bbs.screen().actions[0]?.label).toBe('LAST ONE OUT [READ]');
     run('MENU');
     expect(run('SYSOP').output).toEqual([
-      { tone: 'sysop', origin: 'fictional', lines: offer().board.sysopGreeting },
+      { tone: 'sysop', origin: 'fictional', lines: sysopGreeting },
     ]);
     data.flags.push('relay-trivia-complete');
     expect(lines(run('MENU'))).toContain('RELAY DRILL: COMPLETE');
     expect(lines(run('DISCONNECT'))).toEqual(['DISCONNECTED']);
     expect(bbs.screen().phase).toBe('offline');
+  });
+
+  it('uses the static greeting or an explicit unavailable message without a dialogue callback', () => {
+    const { data } = sessionData();
+    const current = offer();
+    for (const [board, expected] of [
+      [current.board, ['NO RESPONSE AVAILABLE.']],
+      [{ ...current.board, sysopCharacterId: undefined, sysopGreeting }, sysopGreeting],
+    ] as const) {
+      const bbs = createBbs({ ...current, board }, () => data);
+      runAll(bbs.dispatch, 'CONNECT', 'DESIGNATION');
+      expect(bbs.dispatch('SYSOP').output).toEqual([
+        { tone: 'sysop', origin: 'fictional', lines: expected },
+      ]);
+    }
   });
 
   it('normalizes a custom handle and rejects invalid input without leaving the current screen', () => {
@@ -199,6 +235,97 @@ const openThread = [
   'BOARD general',
   'THREAD relay-thread',
 ] as const;
+
+it('routes SYSOP and profile TALK to their own scripted lines before and after the relay read', () => {
+  const { run, data, commands } = boardSession();
+  const talk = () => {
+    runAll(run, 'MENU', 'PEOPLE', 'PROFILE echo-profile');
+    expect(commands()).toContain('TALK');
+    return run('TALK').output;
+  };
+  runAll(run, 'CONNECT', 'DESIGNATION');
+  expect(run('SYSOP').output).toEqual([
+    { tone: 'sysop', origin: 'fictional', lines: sysopGreeting },
+  ]);
+  expect(talk()).toEqual([
+    {
+      tone: 'private',
+      origin: 'fictional',
+      lines: ['ECHO: The relay desk note is available. I have no receipt for your copy yet.'],
+    },
+  ]);
+  runAll(run, 'MENU', ...openThread.slice(2), 'MENU');
+  expect(run('SYSOP').output).toEqual([
+    {
+      tone: 'sysop',
+      origin: 'fictional',
+      lines: ['RECEIPT FILED AT RELAY 07. ORIGINAL REMAINS READ-ONLY.'],
+    },
+  ]);
+  expect(talk()).toEqual([
+    {
+      tone: 'private',
+      origin: 'fictional',
+      lines: ['ECHO: The desk logged your read. A receipt tells me where the copy landed.'],
+    },
+  ]);
+  expect(data.seenLines).toEqual([
+    'sysop.bbs.greeting',
+    'echo.bbs.greeting',
+    'sysop.bbs.relay-receipt',
+    'echo.bbs.relay-receipt',
+  ]);
+});
+
+it('posts one new bulletin in the same save as the qualifying BBS read', () => {
+  const { run, bbs, storage, data } = boardSession();
+  runAll(run, 'CONNECT', 'DESIGNATION', 'MESSAGES', 'READ 1', 'MENU', 'BOARDS', 'BOARD general');
+  expect(data.events.fired).toEqual([]);
+  runAll(run, 'MENU', 'MESSAGES');
+  expect(bbs.screen().actions.filter(({ command }) => command.startsWith('READ '))).toEqual([
+    { command: 'READ 1', label: 'LAST ONE OUT [READ]' },
+  ]);
+  expect(run('READ 2').effect).toBeUndefined();
+  runAll(run, 'MENU', 'BOARDS', 'BOARD general');
+  storage.setItem.mockClear();
+  const opened = run('THREAD relay-thread');
+  expect(opened.effect?.readKeys).toContain('message:relay-note');
+  expect(storage.setItem).toHaveBeenCalledOnce();
+  expect(JSON.parse(storage.value!)).toMatchObject({
+    bbs: { history: expect.arrayContaining([{ kind: 'thread', id: 'relay-thread' }]) },
+    bbsReadMessages: ['archive:lore.last-sysop', 'message:relay-note'],
+    flags: ['relay-note-read'],
+    events: { fired: ['relay-read', 'relay-bulletin'], bulletins: ['relay-bulletin'] },
+  });
+
+  data.events.bulletins.unshift('removed-bulletin');
+  runAll(run, 'MENU', 'MESSAGES');
+  expect(bbs.screen().actions.slice(0, 2)).toEqual([
+    { command: 'READ 1', label: 'LAST ONE OUT [READ]' },
+    { command: 'READ 2', label: 'Relay desk receipt [NEW]' },
+  ]);
+  expect(lines(run('READ 2'))).toContain('Local receipt filed for the relay desk note.');
+  run('BACK');
+  expect(bbs.screen().actions[1]).toEqual({
+    command: 'READ 2',
+    label: 'Relay desk receipt [READ]',
+  });
+  run('MENU');
+  expect(lines(run('HISTORY'))).toContain('Read message: Relay desk receipt');
+});
+
+it('keeps a triggered bulletin in this tab when the qualifying read cannot be saved', () => {
+  const { run, bbs, storage } = boardSession();
+  runAll(run, ...openThread.slice(0, -1));
+  const previous = storage.value;
+  storage.setItem.mockImplementationOnce(() => {
+    throw new Error('storage refused write');
+  });
+  runAll(run, 'THREAD relay-thread', 'MENU', 'MESSAGES');
+  expect(bbs.screen().actions[1]?.label).toBe('Relay desk receipt [NEW]');
+  expect(storage.value).toBe(previous);
+  expect(sessionData(storage).data.events.fired).toEqual([]);
+});
 
 it('lists both boards and sorts visible threads by authored order and ID while preserving post order', () => {
   const original = bundledFiles['content/bbs/relay-thread.json'] as Record<string, unknown>;

@@ -8,6 +8,7 @@ export const FACT_KINDS = {
   discovered: 'sectors',
   completed: 'episodes',
   flag: null,
+  'bbs-read': 'bbs',
 } as const;
 
 export type FactPrefix = keyof typeof FACT_KINDS;

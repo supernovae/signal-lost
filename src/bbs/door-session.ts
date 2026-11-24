@@ -1,6 +1,6 @@
 import type { DoorScreen } from '../doors/contract.ts';
 import type { DoorHost, DoorResult } from '../doors/host.ts';
-import { createBbs, type BbsAction, type DispatchResult } from './bbs.ts';
+import { createBbs, type BbsAction, type BbsSay, type DispatchResult } from './bbs.ts';
 import { bbsCopy } from './copy.ts';
 
 const { actions, text } = bbsCopy;
@@ -10,8 +10,9 @@ export function createBbsDoorSession(
   offer: Parameters<typeof createBbs>[0],
   snapshot: Parameters<typeof createBbs>[1],
   host: DoorHost,
+  say?: BbsSay,
 ) {
-  const bbs = createBbs(offer, snapshot, host);
+  const bbs = createBbs(offer, snapshot, host, say);
   let doorScreen: DoorScreen | undefined;
   let opening = false;
 

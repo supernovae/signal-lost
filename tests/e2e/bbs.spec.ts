@@ -163,6 +163,43 @@ test('clickable first contact keeps the custom handle and message progress after
   });
 });
 
+test('posts a new bulletin after reading the relay note', async ({ page }) => {
+  await seedSaveOnce(page, completedV1);
+  const button = (name: string) => page.getByRole('button', { name, exact: true });
+  const receipt = page.getByRole('button', { name: /Relay desk receipt/ });
+  const unread = button('[READ 2] Relay desk receipt [NEW]');
+  async function openMessages() {
+    await joinWithEnter(page);
+    await connect(page).click();
+    await button('USE DESIGNATION (OBS-02FF)').click();
+    await button('MESSAGES').click();
+    await expect(button('[READ 1] LAST ONE OUT [UNREAD]')).toBeVisible();
+  }
+
+  await page.goto('./');
+  await openMessages();
+  await expect(receipt).toHaveCount(0);
+  await button('MAIN MENU').click();
+  await button('BOARDS').click();
+  await button('GENERAL').click();
+  await button('Relay desk notes').click();
+  const log = page.getByRole('log');
+  await expect(log.locator('.ai-fictional')).toContainText('A note at the relay desk');
+  await button('MAIN MENU').click();
+  await button('MESSAGES').click();
+  await expect(receipt).toHaveCount(1);
+  await expect(unread).toBeVisible();
+
+  await page.reload();
+  await openMessages();
+  await expect(receipt).toHaveCount(1);
+  await expect(unread).toBeVisible();
+  await unread.click();
+  await expect(log).toContainText('Local receipt filed for the relay desk note.');
+  await button('BACK').click();
+  await expect(button('[READ 2] Relay desk receipt [READ]')).toBeVisible();
+});
+
 for (const input of ['keyboard', 'pointer'] as const) {
   test(`BBS navigation and local progress from the ${input}`, async ({ page }) => {
     if (input === 'keyboard') await page.setViewportSize({ width: 360, height: 640 });

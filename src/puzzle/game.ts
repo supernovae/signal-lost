@@ -1,6 +1,7 @@
 import { evaluate } from '../content/conditions.ts';
 import type { Content, DialogueLine, Puzzle } from '../content/schema.ts';
 import type { DialogueSource, DialogueState } from '../narrative/dialogue.ts';
+import { settleEvents } from '../progress/events.ts';
 import { addFact, factsOf, type SaveData } from '../progress/save.ts';
 import { mulberry32 } from '../signal/rng.ts';
 import { evaluateAnswer, type Answer } from './evaluate.ts';
@@ -82,12 +83,16 @@ export function createGame({ content, data, persist }: GameOptions): Game {
       }
       const granted = grant([`solved:${id}`, ...target.grants]);
       granted.push(...completeEpisodes());
+      settleEvents(content.events, data);
       persist(data);
       return { status: 'solved', feedback, granted, ...base };
     },
     grant(facts) {
       const added = grant(facts);
-      if (added.length > 0) persist(data);
+      if (added.length > 0) {
+        settleEvents(content.events, data);
+        persist(data);
+      }
       return added;
     },
     dialogueState: () => ({

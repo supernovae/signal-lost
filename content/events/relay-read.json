@@ -1,0 +1,5 @@
+{
+  "id": "relay-read",
+  "when": "bbs-read:relay-note",
+  "effects": [{ "kind": "grant-flag", "flag": "relay-note-read" }]
+}
