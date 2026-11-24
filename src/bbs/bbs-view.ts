@@ -62,6 +62,7 @@ export function createBbsScene(
         label.htmlFor = 'bbs-handle';
         label.textContent = 'FICTIONAL HANDLE';
         const input = document.createElement('input');
+        input.type = 'text';
         input.id = 'bbs-handle';
         input.autocomplete = 'off';
         input.spellcheck = false;

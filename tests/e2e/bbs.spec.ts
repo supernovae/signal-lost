@@ -117,6 +117,7 @@ test('clickable first contact keeps the custom handle and message progress after
   await connect(page).click();
   await button('CUSTOM HANDLE').click();
   await expect(handle).toHaveValue('<b>Relay</b>');
+  await expect(handle).toHaveCSS('text-transform', 'none');
   await button('USE DESIGNATION (OBS-0001)').click();
   await expect(log).toContainText('SIGNED IN AS OBS-0001');
   await button('MESSAGES').click();
