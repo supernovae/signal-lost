@@ -1,0 +1,19 @@
+{
+  "kind": "board",
+  "id": "deep-field",
+  "title": "DEEP FIELD",
+  "requires": "completed:episode.000",
+  "notice": "INCOMING CONNECTION: DEEP FIELD. TYPE CONNECT OR SELECT IT TO ACCEPT.",
+  "banner": [
+    "OBSERVER NETWORK RELAY 07",
+    "SYSTEM STATUS: DEGRADED",
+    "ACTIVE CONNECTIONS: UNKNOWN",
+    "INCOMING CONNECTION ACCEPTED",
+    "WELCOME TO THE ECHO NETWORK"
+  ],
+  "sysopGreeting": [
+    "Observer. I am the local preservation routine.",
+    "Keel left the line open. I kept what the board could carry."
+  ],
+  "archiveIds": ["lore.last-sysop"]
+}

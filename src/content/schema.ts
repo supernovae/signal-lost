@@ -138,6 +138,27 @@ export const archiveSchema = z.strictObject({
   searchOnly: z.boolean().default(false),
 });
 
+export const bbsBoardSchema = z.strictObject({
+  ...record,
+  kind: z.literal('board'),
+  title: z.string().min(1),
+  requires: condition,
+  notice: z.string().min(1),
+  banner: text.min(1),
+  sysopGreeting: text.min(1),
+  archiveIds: z.array(id),
+});
+
+export const bbsMessageSchema = z.strictObject({
+  ...record,
+  kind: z.literal('message'),
+  board: id,
+  title: z.string().min(1),
+  from: z.string().min(1),
+  date: z.string().min(1),
+  body: text.min(1),
+});
+
 export const characterSchema = z.strictObject({
   ...record,
   name: z.string(),
@@ -197,6 +218,8 @@ export type CodePuzzle = z.infer<typeof codePuzzle>;
 export type CarrierSignal = z.infer<typeof carrierSignalSchema>;
 export type Transmission = z.infer<typeof transmissionSchema>;
 export type Archive = z.infer<typeof archiveSchema>;
+export type BbsBoard = z.infer<typeof bbsBoardSchema>;
+export type BbsMessage = z.infer<typeof bbsMessageSchema>;
 export type Character = z.infer<typeof characterSchema>;
 export type DialogueLine = Character['lines'][number];
 export type Sector = z.infer<typeof sectorSchema>;
@@ -209,6 +232,7 @@ export interface Content {
   puzzles: Puzzle[];
   transmissions: Transmission[];
   archives: Archive[];
+  bbs: (BbsBoard | BbsMessage)[];
   characters: Character[];
   sectors: Sector[];
   artifacts: Artifact[];

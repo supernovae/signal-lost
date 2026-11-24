@@ -1,5 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { getBbsOffer } from '../../src/bbs/bbs.ts';
+import { readContentDir } from '../../src/content/node.ts';
+import { loadContent } from '../../src/content/validate.ts';
 import {
   addFact,
   DEFAULT_PREFERENCES,
@@ -32,6 +35,7 @@ const completedV1 = readFileSync(
   new URL('../fixtures/episode-000-complete-v1.json', import.meta.url),
   'utf8',
 );
+const { content } = loadContent(readContentDir('content'));
 
 describe('save data', () => {
   it('round-trips progress and normalizes the profile', () => {
@@ -110,6 +114,7 @@ describe('save data', () => {
     expect(data).toEqual({
       ...global,
       schemaVersion: 2,
+      bbsReadMessages: [],
       profile: { handle: null, designation, accessLevel: null, seed: 123 },
       doorState: {},
     });
@@ -129,10 +134,51 @@ describe('save data', () => {
         'flag:forge-opened',
       ]),
     );
+    expect(getBbsOffer(content, factsOf(data))?.board.id).toBe('deep-field');
     expect(storage.setItem).toHaveBeenCalledOnce();
     expect(openSaveSession(storage, draw)).toMatchObject({ status: 'loaded', data });
     expect(storage.setItem).toHaveBeenCalledOnce();
     expect(draw).toHaveBeenCalledOnce();
+  });
+
+  it('offers DEEP FIELD to a pre-feature v2 save without FORGE progress', () => {
+    const { bbsReadMessages, ...data } = freshSave(42);
+    expect(bbsReadMessages).toEqual([]);
+    data.episodes.push('episode.000');
+    data.profile.designation = 'OBS-02FF';
+    const session = openSaveSession(memoryStorage(JSON.stringify(data)));
+    expect(session.status).toBe('loaded');
+    expect(session.data).toEqual({ ...data, bbsReadMessages: [] });
+    expect(getBbsOffer(content, factsOf(session.data))?.board.id).toBe('deep-field');
+  });
+
+  it('round-trips BBS progress independently of archive, dialogue and door progress', () => {
+    const storage = memoryStorage();
+    const { data, persist } = openSaveSession(storage, seed);
+    data.profile.handle = '  Finch  ';
+    data.bbsReadMessages.push('archive:lore.last-sysop', 'archive:lore.last-sysop', 'message:post');
+    data.archives.push('manual.rev-c');
+    data.seenLines.push('echo.carrier.hint.1');
+    data.doorState['example'] = { opened: true };
+    expect(persist()).toBe(true);
+
+    const reopened = openSaveSession(storage);
+    expect(reopened.data).toEqual({
+      ...data,
+      profile: { ...data.profile, handle: 'Finch' },
+      bbsReadMessages: ['archive:lore.last-sysop', 'message:post'],
+    });
+    expect(factsOf(reopened.data)).toEqual(new Set(['read:manual.rev-c']));
+
+    for (const bbsReadMessages of ['broken', ['archive:lore.last-sysop', 123]]) {
+      const malformed = memoryStorage(
+        JSON.stringify({ ...JSON.parse(storage.value!), bbsReadMessages }),
+      );
+      expect(openSaveSession(malformed)).toMatchObject({
+        status: 'loaded',
+        data: { ...reopened.data, bbsReadMessages: [] },
+      });
+    }
   });
 
   it('migrates version 0 progress and designation with default preferences', () => {

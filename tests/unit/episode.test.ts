@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { getBbsOffer } from '../../src/bbs/bbs.ts';
 import { evaluate } from '../../src/content/conditions.ts';
 import type { CarrierPuzzle, RasterPuzzle } from '../../src/content/schema.ts';
 import { readContentDir } from '../../src/content/node.ts';
@@ -178,9 +179,11 @@ describe('the ending', () => {
     const { game, data } = newGame();
     game.attempt('puzzle.carrier', ANSWERS.carrier);
     game.attempt('puzzle.pattern', ANSWERS.pattern);
+    expect(getBbsOffer(content, game.facts())).toBeUndefined();
     const result = game.attempt('puzzle.archive', ANSWERS.archive);
     expect(result.status).toBe('solved');
     expect(result.granted).toContain('completed:episode.000');
+    expect(getBbsOffer(content, game.facts())?.board.id).toBe('deep-field');
     expect(data.profile.designation).toMatch(/^OBS-[0-9A-F]{4}$/);
     expect(game.transmissions().map((t) => t.id)).toContain('tx.reconstructed');
   });

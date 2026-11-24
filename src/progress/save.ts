@@ -26,18 +26,20 @@ const legacySchema = globalSchema.extend({
   designation: z.string().nullable(),
 });
 
-const handleSchema = z
-  .string()
-  .nullable()
-  .transform((handle) => {
-    const trimmed = handle?.trim();
-    return trimmed ? Array.from(trimmed).slice(0, 32).join('').trimEnd() : null;
-  });
+export function normalizeHandle(handle: string | null): string | null {
+  const trimmed = handle?.trim();
+  return trimmed ? Array.from(trimmed).slice(0, 32).join('').trimEnd() : null;
+}
 
 const saveSchema = globalSchema.extend({
   schemaVersion: z.literal(SAVE_SCHEMA_VERSION),
+  bbsReadMessages: z
+    .array(z.string())
+    .catch([])
+    .default([])
+    .transform((keys) => [...new Set(keys)]),
   profile: z.object({
-    handle: handleSchema,
+    handle: z.string().nullable().transform(normalizeHandle),
     designation: z.string().nullable(),
     accessLevel: z
       .string()
@@ -81,6 +83,7 @@ export function freshSave(seed = createSaveSeed()): SaveData {
     seenLines: [],
     failures: {},
     preferences: { ...DEFAULT_PREFERENCES },
+    bbsReadMessages: [],
     profile: { handle: null, designation: null, accessLevel: null, seed },
     doorState: {},
   };
@@ -161,6 +164,7 @@ export function loadSave(
         const data: SaveData = {
           ...global,
           schemaVersion: SAVE_SCHEMA_VERSION,
+          bbsReadMessages: [],
           profile: { handle: null, designation, accessLevel: null, seed: seed() },
           doorState: {},
         };

@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import { FACT_KINDS, factsIn, type Condition, type FactPrefix } from './conditions.ts';
 import {
   CONTENT_SCHEMA_VERSION,
@@ -9,6 +9,8 @@ import {
 import {
   archiveSchema,
   artifactSchema,
+  bbsBoardSchema,
+  bbsMessageSchema,
   characterSchema,
   communitySchema,
   episodeSchema,
@@ -44,6 +46,7 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   puzzles: puzzleSchema,
   transmissions: transmissionSchema,
   archives: archiveSchema,
+  bbs: z.discriminatedUnion('kind', [bbsBoardSchema, bbsMessageSchema]),
   characters: characterSchema,
   sectors: sectorSchema,
   artifacts: artifactSchema,
@@ -64,6 +67,7 @@ export function loadContent(files: Record<string, unknown>): LoadResult {
     puzzles: [],
     transmissions: [],
     archives: [],
+    bbs: [],
     characters: [],
     sectors: [],
     artifacts: [],
@@ -196,6 +200,22 @@ function checkReferences(content: Content, sources: Sources, errors: ContentErro
   }
   for (const record of [...content.transmissions, ...content.archives, ...content.artifacts]) {
     checkCondition(record.requires, record, 'requires');
+  }
+  const boardIds = new Set(content.bbs.filter((entry) => entry.kind === 'board').map((b) => b.id));
+  for (const entry of content.bbs) {
+    const { file } = sources.get(entry)!;
+    if (entry.kind === 'message') {
+      if (!boardIds.has(entry.board)) {
+        errors.push({ file, field: 'board', message: `unknown BBS board "${entry.board}"` });
+      }
+      continue;
+    }
+    checkCondition(entry.requires, entry, 'requires');
+    entry.archiveIds.forEach((id, index) => {
+      if (!ids.archives.has(id)) {
+        errors.push({ file, field: `archiveIds.${index}`, message: `unknown archive "${id}"` });
+      }
+    });
   }
   for (const artifact of content.artifacts) {
     artifact.grantsOnOpen.forEach((g, i) => checkFact(g, artifact, `grantsOnOpen.${i}`, true));
