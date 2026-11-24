@@ -5,6 +5,7 @@ import { applyBbsEffect, createBbsProgress } from '../../src/bbs/progress.ts';
 import { bbsThemeIds } from '../../src/bbs/themes.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import { loadContent } from '../../src/content/validate.ts';
+import { deriveAccessLevel } from '../../src/progress/access.ts';
 import { settleEvents } from '../../src/progress/events.ts';
 import {
   addFact,
@@ -50,7 +51,6 @@ describe('save data', () => {
     data.profile = {
       handle: `  ${handle}z  `,
       designation: 'OBS-0001',
-      accessLevel: 'MAINTAINER',
       seed: 0,
     };
     expect(writeSave(storage, data)).toBe(true);
@@ -121,7 +121,7 @@ describe('save data', () => {
       schemaVersion: 2,
       bbsReadMessages: [],
       events: { fired: [], bulletins: [] },
-      profile: { handle: null, designation, accessLevel: null, seed: 123 },
+      profile: { handle: null, designation, seed: 123 },
       doorState: {},
     });
     expect(factsOf(data)).toEqual(
@@ -141,10 +141,41 @@ describe('save data', () => {
       ]),
     );
     expect(getBbsOffer(content, factsOf(data))?.board.id).toBe('deep-field');
+    expect(deriveAccessLevel(content.accessLevels, factsOf(data))?.label).toBe('RELAY');
     expect(storage.setItem).toHaveBeenCalledOnce();
     expect(openSaveSession(storage, draw)).toMatchObject({ status: 'loaded', data });
     expect(storage.setItem).toHaveBeenCalledOnce();
     expect(draw).toHaveBeenCalledOnce();
+  });
+
+  it('derives VISITOR when a completed v1 save has no optional service progress', () => {
+    const legacy = JSON.parse(completedV1) as { puzzles: string[]; flags: string[] };
+    legacy.puzzles = legacy.puzzles.filter((id) => id !== 'puzzle.service');
+    legacy.flags = legacy.flags.filter(
+      (id) => id !== 'service-panel-open' && id !== 'forge-opened',
+    );
+    const { data, status } = openSaveSession(memoryStorage(JSON.stringify(legacy)), seed);
+    expect(status).toBe('migrated');
+    expect(data.episodes).toEqual(['episode.000']);
+    expect(deriveAccessLevel(content.accessLevels, factsOf(data))?.label).toBe('VISITOR');
+  });
+
+  it.each([
+    ['a stale higher level', { accessLevel: 'MAINTAINER' }],
+    ['no cached level', {}],
+  ])('loads v2 with %s and persists only the profile and progress', (_case, cache) => {
+    const data = freshSave(42);
+    data.episodes.push('episode.000');
+    data.profile = { handle: 'Relay', designation: 'OBS-02FF', seed: 42 };
+    const storage = memoryStorage(
+      JSON.stringify({ ...data, profile: { ...data.profile, ...cache } }),
+    );
+    const session = openSaveSession(storage, seed);
+    expect(session.status).toBe('loaded');
+    expect(session.data).toEqual(data);
+    expect(deriveAccessLevel(content.accessLevels, factsOf(session.data))?.label).toBe('VISITOR');
+    expect(session.persist()).toBe(true);
+    expect(JSON.parse(storage.value!)).toEqual(data);
   });
 
   it('offers DEEP FIELD to a pre-feature v2 save without FORGE progress', () => {

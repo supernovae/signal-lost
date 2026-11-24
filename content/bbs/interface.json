@@ -66,6 +66,7 @@
     "handle": "FICTIONAL HANDLE",
     "signIn": "SIGN IN",
     "title": "{title} MAIN MENU",
+    "accessLevel": "ACCESS LEVEL: {level}",
     "loginHint": "TYPE DESIGNATION OR LOGIN <HANDLE>, OR SELECT A SIGN-IN OPTION.",
     "customHint": "TYPE LOGIN <HANDLE> OR SELECT CUSTOM HANDLE.",
     "menuHint": "TYPE A MENU COMMAND OR SELECT AN OPTION. TYPE HELP TO SEE COMMANDS.",

@@ -92,31 +92,35 @@ test('a newer save survives progress, settings changes, reset and reload', async
   expect(await saved()).toBe(original);
 });
 
-test('STATUS prints the normalized profile as text', async ({ page }) => {
+test('STATUS prints the normalized profile as text and derives access from progress', async ({
+  page,
+}) => {
   const data = freshSave(42);
-  data.profile = {
+  const profile = {
     ...data.profile,
     handle: '  <b>Relay</b>  ',
     designation: 'OBS-0001',
     accessLevel: 'MAINTAINER',
   };
-  await seedSaveOnce(page, JSON.stringify(data));
+  await seedSaveOnce(page, JSON.stringify({ ...data, profile }));
   await join(page);
   await page.getByRole('button', { name: /STATUS/ }).click();
   const log = page.getByRole('log');
   const handle = log.getByText('HANDLE: <b>Relay</b>', { exact: true });
   await expect(handle).toBeVisible();
   expect(await handle.textContent()).toBe('HANDLE: <b>Relay</b>');
-  await expect(log.getByText('ACCESS LEVEL: MAINTAINER', { exact: true })).toBeVisible();
+  await expect(log.locator('p.dim').last()).toHaveText('ACCESS LEVEL: VISITOR');
+  await expect(log.getByText('ACCESS LEVEL: MAINTAINER', { exact: true })).toHaveCount(0);
   await expect(log.getByText('DESIGNATION: OBS-0001', { exact: true })).toBeVisible();
   await expect(log.getByText('LINK: ONE-WAY', { exact: true })).toBeVisible();
   await expect(log.locator('b')).toHaveCount(0);
 });
 
-test('STATUS omits unset profile fields on a fresh join', async ({ page }) => {
+test('STATUS shows VISITOR and omits unset profile fields on a fresh join', async ({ page }) => {
   await join(page);
   await page.getByRole('button', { name: /STATUS/ }).click();
   const log = page.getByRole('log');
   await expect(log.getByText('LINK: ONE-WAY', { exact: true })).toBeVisible();
-  await expect(log).not.toContainText(/HANDLE:|ACCESS LEVEL:/);
+  await expect(log.locator('p.dim').last()).toHaveText('ACCESS LEVEL: VISITOR');
+  await expect(log).not.toContainText(/HANDLE:|DESIGNATION:/);
 });

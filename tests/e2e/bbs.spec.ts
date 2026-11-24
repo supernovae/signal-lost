@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
+import relayTrivia from '../../content/doors/relay-trivia.json' with { type: 'json' };
 import { freshSave } from '../../src/progress/save.ts';
 import { expect, test } from './fixtures.ts';
 import { SAVE_KEY, seedSaveOnce } from './helpers.ts';
@@ -22,13 +23,37 @@ async function typeCommand(page: Page, prompt: 'OBS>' | 'BBS>', command: string)
   await page.keyboard.press('Enter');
 }
 
+async function activateBbsButton(page: Page, input: 'keyboard' | 'pointer', name: string) {
+  const target = page.getByRole('button', { name, exact: true });
+  await expect(target).toBeVisible();
+  if (input === 'pointer') {
+    await target.click();
+    return;
+  }
+  await expect(page.getByLabel('BBS>')).toBeFocused();
+  const controls = await page
+    .getByRole('navigation', { name: 'Tools' })
+    .getByRole('button')
+    .count();
+  for (let i = 0; i < controls; i++) {
+    await page.keyboard.press('Shift+Tab');
+    if (await target.evaluate((element) => element === document.activeElement)) break;
+  }
+  await expect(target).toBeFocused();
+  await expect(target).toBeInViewport();
+  await page.keyboard.press('Enter');
+}
+
 test('keyboard first contact and relay trivia from a migrated completed save', async ({ page }) => {
   await seedSaveOnce(page, completedV1);
   await page.goto('./');
   await joinWithEnter(page);
   const log = page.getByRole('log');
+  const system = log.locator('.system').last();
   await expect(log).toContainText('INCOMING CONNECTION: DEEP FIELD');
   await expect(connect(page)).toBeVisible();
+  await typeCommand(page, 'OBS>', 'STATUS');
+  await expect(log.locator('p.dim').last()).toHaveText('ACCESS LEVEL: RELAY');
 
   await typeCommand(page, 'OBS>', 'CONNECT');
   await expect(log).toContainText('OBSERVER NETWORK RELAY 07');
@@ -36,6 +61,8 @@ test('keyboard first contact and relay trivia from a migrated completed save', a
   await expect(log.locator('.system').last()).toContainText('LOGIN <HANDLE>');
   await typeCommand(page, 'BBS>', 'DESIGNATION');
   await expect(log).toContainText('SIGNED IN AS OBS-02FF');
+  await expect(system).toContainText('DEEP FIELD MAIN MENU');
+  await expect(system).toContainText('ACCESS LEVEL: RELAY');
   await typeCommand(page, 'BBS>', 'MESSAGES');
   await expect(log).toContainText('READ <NUMBER>');
   await typeCommand(page, 'BBS>', 'READ 1');
@@ -46,7 +73,6 @@ test('keyboard first contact and relay trivia from a migrated completed save', a
   await typeCommand(page, 'BBS>', 'MENU');
   await expect(log).not.toContainText('RELAY DRILL: COMPLETE');
   await typeCommand(page, 'BBS>', 'DOORS');
-  const system = log.locator('.system').last();
   const door = log.locator('.door').last();
   await expect(door).toContainText('DEEP FIELD DOOR DIRECTORY');
   await typeCommand(page, 'BBS>', 'OPEN relay-trivia');
@@ -201,6 +227,76 @@ test('posts a new bulletin after reading the relay note', async ({ page }) => {
 });
 
 for (const input of ['keyboard', 'pointer'] as const) {
+  test(`SECOND LINE denies and grants access through ${input} controls`, async ({ page }) => {
+    const beforeRelay = JSON.parse(completedV1) as { puzzles: string[]; flags: string[] };
+    beforeRelay.puzzles = beforeRelay.puzzles.filter((id) => id !== 'puzzle.service');
+    beforeRelay.flags = beforeRelay.flags.filter(
+      (id) => id !== 'service-panel-open' && id !== 'forge-opened',
+    );
+    await seedSaveOnce(page, JSON.stringify(beforeRelay));
+    await page.goto('./');
+    const log = page.getByRole('log');
+    const latestMenu = log.locator('.system').last();
+    const latestDenial = log.locator('.restricted').last();
+    const denial = 'SECOND LINE SWITCHBOARD: CARRIER HELD. RELAY CLEARANCE REQUIRED.';
+    const thread = 'A note from the second line';
+    const activate = (name: string) => activateBbsButton(page, input, name);
+
+    async function joinAndSignIn(level: string) {
+      await joinWithEnter(page);
+      if (input === 'keyboard') await typeCommand(page, 'OBS>', 'CONNECT');
+      else await connect(page).click();
+      await activate('USE DESIGNATION (OBS-02FF)');
+      await expect(latestMenu).toContainText('DEEP FIELD MAIN MENU');
+      await expect(latestMenu).toContainText(`ACCESS LEVEL: ${level}`);
+    }
+
+    async function readSecondLine() {
+      await activate('BOARDS');
+      await activate('SECOND LINE');
+      await activate(thread);
+      const post = log.locator('.recovered').last();
+      await expect(post).toContainText('IS ANYONE ELSE ON THIS LINE');
+      await expect(post).toContainText('FILED BY: SIGNAL//LOST maintainers (supernovae)');
+    }
+
+    await joinAndSignIn('VISITOR');
+    await activate('BOARDS');
+    if (input === 'keyboard') {
+      await typeCommand(page, 'BBS>', 'BOARD second-line');
+      await expect(latestDenial).toContainText(denial);
+    }
+    const denials = log.locator('.restricted');
+    const countBeforeButton = input === 'keyboard' ? 1 : 0;
+    await activate('SECOND LINE');
+    await expect(denials).toHaveCount(countBeforeButton + 1);
+    await expect(latestDenial).toContainText(denial);
+    await expect(page.getByRole('button', { name: thread })).toHaveCount(0);
+
+    await activate('MAIN MENU');
+    await activate('DOORS');
+    await activate(`[OPEN ${relayTrivia.id}] ${relayTrivia.name}`);
+    for (const question of relayTrivia.questions) {
+      await activate(`[${question.answer + 1}] ${question.options[question.answer]}`);
+    }
+    await expect(log.locator('.door').last()).toContainText(relayTrivia.success[0]!);
+    await activate('EXIT');
+    await expect(latestMenu).toContainText('DEEP FIELD MAIN MENU');
+    await expect(latestMenu).toContainText('ACCESS LEVEL: RELAY');
+    await expect(latestMenu).toContainText('RELAY DRILL: COMPLETE');
+    await readSecondLine();
+
+    await activate('DISCONNECT');
+    await typeCommand(page, 'OBS>', 'STATUS');
+    await expect(log.locator('p.dim').last()).toHaveText('ACCESS LEVEL: RELAY');
+    const saved = await page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
+    expect(JSON.parse(saved!).flags).toEqual(['relay-trivia-complete']);
+
+    await page.reload();
+    await joinAndSignIn('RELAY');
+    await readSecondLine();
+  });
+
   test(`BBS navigation and local progress from the ${input}`, async ({ page }) => {
     if (input === 'keyboard') await page.setViewportSize({ width: 360, height: 640 });
     await seedSaveOnce(page, completedV1);
@@ -209,26 +305,7 @@ for (const input of ['keyboard', 'pointer'] as const) {
     const prompt = page.getByLabel('BBS>');
     const log = page.getByRole('log');
     const button = (name: string) => page.getByRole('button', { name, exact: true });
-    const activate = async (name: string) => {
-      const target = button(name);
-      await expect(target).toBeVisible();
-      if (input === 'pointer') {
-        await target.click();
-        return;
-      }
-      await expect(prompt).toBeFocused();
-      const controls = await page
-        .getByRole('navigation', { name: 'Tools' })
-        .getByRole('button')
-        .count();
-      for (let i = 0; i < controls; i++) {
-        await page.keyboard.press('Shift+Tab');
-        if (await target.evaluate((element) => element === document.activeElement)) break;
-      }
-      await expect(target).toBeFocused();
-      await expect(target).toBeInViewport();
-      await page.keyboard.press('Enter');
-    };
+    const activate = (name: string) => activateBbsButton(page, input, name);
 
     async function signIn() {
       if (input === 'keyboard') await typeCommand(page, 'OBS>', 'CONNECT');

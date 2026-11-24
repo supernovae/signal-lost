@@ -66,8 +66,29 @@ Open a pull request with your one new file. CI runs the same validation, and a p
 | `completed:<episode id>`     | The player finished that episode.                               |
 | `flag:<name>`                | Something granted that flag. A flag nothing grants is an error. |
 
-`bbs-read:` comes from BBS message reads and can only appear in conditions. Archive-tool reads use
+`bbs-read:` comes from BBS message reads and cannot be granted by content. Archive-tool reads use
 `read:`. Opening an archive from the BBS does not create a `bbs-read:` fact.
+
+## Access levels and earned capabilities
+
+Put each access level in `content/access-levels/` with a stable `id`, a displayed `label`, and a
+unique nonnegative integer `rank`. A nonempty catalog needs one unconditional rank 0. Each higher
+rank needs a `when` condition. Access conditions accept fact names and nonempty `all` and `any`
+groups. They reject `not` so adding facts can only maintain or raise a player's level. Design two
+independent ways to reach a level that story progression needs.
+
+A BBS `message-board` can declare `access` with a minimum `level` ID and a `deniedText` line.
+The listing stays visible, and the BBS displays that line when the player tries to enter below
+the required level.
+
+In `content/capabilities/`, give each capability an `id`, a `kind`, an existing saved `fact`, and
+a `target`. Use `kind: "research"` with a target such as
+`{ "kind": "archive", "id": "archive.example" }` or `{ "kind": "board", "id": "board.example" }`.
+Use `kind: "reputation"` with a target such as
+`{ "characterId": "sysop", "lineId": "sysop.bbs.example" }`. The line must be reachable through
+SYSOP or TALK. Optional `context` lists the other facts needed to demonstrate the effect.
+Validation checks that adding the capability fact to that context opens the target or selects
+the advertised response with different visible text. The declaration itself grants no facts.
 
 ## Network events
 

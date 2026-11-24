@@ -28,7 +28,7 @@
       "title": "IS ANYONE ELSE ON THIS LINE",
       "from": "UNLISTED",
       "date": "UNDATED",
-      "requires": "flag:service-panel-open",
+      "requires": { "any": ["flag:service-panel-open", "flag:relay-trivia-complete"] },
       "keywords": ["second", "line", "forge"],
       "body": [
         "This board isn't in the index. I don't know how long it's been here.",

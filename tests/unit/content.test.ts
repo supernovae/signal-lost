@@ -19,7 +19,15 @@ import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
 import { evaluate } from '../../src/content/conditions.ts';
 import { hashContent } from '../../src/content/manifest.ts';
 import { readContentDir } from '../../src/content/node.ts';
-import type { DoorMetadata, TriviaDoor } from '../../src/content/schema.ts';
+import {
+  bbsBoardSchema,
+  bbsInterfaceSchema,
+  bbsMessageBoardSchema,
+  characterSchema,
+  communitySchema,
+  type DoorMetadata,
+  type TriviaDoor,
+} from '../../src/content/schema.ts';
 import { loadContent } from '../../src/content/validate.ts';
 import type { CodeDoorRegistration } from '../../src/doors/contract.ts';
 import { createDoorHost } from '../../src/doors/host.ts';
@@ -651,6 +659,243 @@ describe('diagnostics', () => {
 
   it('reports files outside known directories', () => {
     expect(firstError({ 'content/mystery/x.json': {} }).field).toBe('(file)');
+  });
+});
+
+describe('access and capability diagnostics', () => {
+  const files = readContentDir('content');
+  const baselineFile = 'content/access-levels/visitor.json';
+  const relayFile = 'content/access-levels/relay.json';
+  const boardFile = 'content/bbs/second-line.json';
+  const researchFile = 'content/capabilities/service-panel-research.json';
+  const reputationFile = 'content/capabilities/relay-desk-reputation.json';
+  const communityFile = 'content/community/first-light.json';
+  const sysopFile = 'content/characters/sysop.json';
+  const endpointFile = 'content/bbs/deep-field.json';
+  const panel = 'flag:service-panel-open';
+  const reputation = 'flag:relay-note-read';
+  const relay = { id: 'relay', label: 'RELAY', rank: 1, when: panel };
+  const research = { id: 'service-panel-research', kind: 'research', fact: panel };
+  const board = bbsMessageBoardSchema.parse(files[boardFile]);
+
+  function expectError(
+    overrides: Record<string, unknown>,
+    file: string,
+    field: string,
+    message?: string,
+  ) {
+    const errors = loadContent({ ...files, ...overrides }).errors;
+    expect(errors).toContainEqual(
+      expect.objectContaining({
+        file,
+        field,
+        ...(message ? { message: expect.stringContaining(message) } : {}),
+      }),
+    );
+  }
+
+  it.each([
+    [{ all: [panel, { any: [{ not: 'flag:relay-trivia-complete' }] }] }, 'when'],
+    [{ all: [] }, 'when.all'],
+    [{ any: [] }, 'when.any'],
+  ])('rejects invalid access condition %j', (when, field) => {
+    expectError({ [relayFile]: { ...relay, when } }, relayFile, field);
+  });
+
+  it('requires the unconditional baseline and a condition at every positive rank', () => {
+    const withoutBaseline = { ...files };
+    delete withoutBaseline[baselineFile];
+    expect(loadContent(withoutBaseline).errors).toContainEqual(
+      expect.objectContaining({
+        file: relayFile,
+        field: 'rank',
+        message: expect.stringContaining('unconditional rank 0'),
+      }),
+    );
+    expectError(
+      { [baselineFile]: { ...relay, id: 'visitor', rank: 0 } },
+      baselineFile,
+      'when',
+      'unconditional',
+    );
+    expectError(
+      { [relayFile]: { ...relay, when: undefined } },
+      relayFile,
+      'when',
+      'positive ranks',
+    );
+    expectError({ [relayFile]: { ...relay, rank: -1 } }, relayFile, 'rank');
+  });
+
+  it('rejects duplicate ranks and IDs, unknown facts and unknown board thresholds', () => {
+    const extraFile = 'content/access-levels/z-extra.json';
+    expectError(
+      { [extraFile]: { ...relay, id: 'extra' } },
+      extraFile,
+      'rank',
+      'duplicate access level rank',
+    );
+    expectError(
+      { [extraFile]: { ...relay, rank: 2 } },
+      extraFile,
+      'id',
+      'duplicate accessLevels id',
+    );
+    expectError(
+      { [relayFile]: { ...relay, when: 'solved:p.missing' } },
+      relayFile,
+      'when',
+      'unknown fact',
+    );
+    expectError(
+      { [boardFile]: { ...board, access: { ...board.access, level: 'missing' } } },
+      boardFile,
+      'access.level',
+      'unknown access level',
+    );
+  });
+
+  it('requires research to make the declared archive available', () => {
+    const community = communitySchema.parse(files[communityFile]);
+    const archive = community.archives[0]!;
+    const requires = { all: [panel, 'completed:episode.000'] };
+    const target = { kind: 'archive', id: archive.id };
+    const withCondition = { ...community, archives: [{ ...archive, requires }] };
+    expect(
+      loadContent({
+        ...files,
+        [communityFile]: withCondition,
+        [researchFile]: {
+          ...research,
+          target,
+          context: ['completed:episode.000'],
+        },
+      }).errors,
+    ).toEqual([]);
+    expectError(
+      { [researchFile]: { ...research, target: { ...target, id: 'missing' } } },
+      researchFile,
+      'target',
+      'unknown archive',
+    );
+    expectError(
+      { [communityFile]: { ...community, archives: [{ ...archive, requires: undefined }] } },
+      researchFile,
+      'target',
+      'must unlock archive',
+    );
+    expectError({ [communityFile]: withCondition }, researchFile, 'target', 'must unlock archive');
+  });
+
+  it('requires a board-target research fact to raise access across its threshold', () => {
+    const declaration = { ...research, target: { kind: 'board', id: board.id } };
+    expect(loadContent({ ...files, [researchFile]: declaration }).errors).toEqual([]);
+    expectError(
+      {
+        [researchFile]: declaration,
+        [boardFile]: { ...board, access: { ...board.access, level: 'visitor' } },
+      },
+      researchFile,
+      'target',
+      'must unlock BBS message board',
+    );
+    expectError(
+      {
+        [researchFile]: declaration,
+        [relayFile]: { ...relay, when: 'flag:relay-trivia-complete' },
+      },
+      researchFile,
+      'target',
+      'must unlock BBS message board',
+    );
+    expectError(
+      { [researchFile]: { ...declaration, target: { kind: 'board', id: 'missing' } } },
+      researchFile,
+      'target',
+      'unknown BBS message board',
+    );
+    expectError(
+      { [researchFile]: { ...declaration, fact: 'flag:missing' } },
+      researchFile,
+      'fact',
+      'nothing grants',
+    );
+    expectError(
+      { [researchFile]: { ...declaration, context: ['bbs-read:missing'] } },
+      researchFile,
+      'context.0',
+      'unknown BBS message',
+    );
+    expectError(
+      { [researchFile]: { ...declaration, context: [panel] } },
+      researchFile,
+      'context',
+      'cannot contain',
+    );
+  });
+
+  it('requires reputation to select the advertised response and change its visible text', () => {
+    const sysop = characterSchema.parse(files[sysopFile]);
+    const [greeting, earned] = sysop.lines;
+    const endpoint = bbsBoardSchema.parse(files[endpointFile]);
+    expect(loadContent(files).errors).toEqual([]);
+    const cases = [
+      { [sysopFile]: { ...sysop, lines: [greeting, { ...earned, when: undefined }] } },
+      {
+        [endpointFile]: {
+          ...endpoint,
+          status: [...endpoint.status, { when: reputation, text: 'FILED' }],
+        },
+        [sysopFile]: { ...sysop, lines: [greeting, { ...earned, when: panel }] },
+      },
+      { [sysopFile]: { ...sysop, lines: [{ ...greeting, priority: 2 }, earned] } },
+      { [sysopFile]: { ...sysop, lines: [greeting, { ...earned, text: greeting!.text }] } },
+    ];
+    for (const overrides of cases) {
+      expectError(
+        overrides,
+        reputationFile,
+        'target',
+        'must select a different visible BBS response',
+      );
+    }
+    expectError(
+      {
+        [reputationFile]: {
+          id: 'test',
+          kind: 'reputation',
+          fact: reputation,
+          target: { characterId: sysop.id, lineId: 'missing' },
+        },
+      },
+      reputationFile,
+      'target',
+      'unknown or unreachable BBS response',
+    );
+  });
+
+  it('rejects a TALK reward that repeats the no-response text', () => {
+    const echoFile = 'content/characters/echo.json';
+    const echo = characterSchema.parse(files[echoFile]);
+    const copy = bbsInterfaceSchema.parse(files['content/bbs/interface.json']);
+    const lineId = 'echo.bbs.test-receipt';
+    expectError(
+      {
+        [echoFile]: {
+          ...echo,
+          lines: [{ id: lineId, kind: 'bbs', when: reputation, text: [copy.text.noDialogue] }],
+        },
+        [reputationFile]: {
+          id: 'test',
+          kind: 'reputation',
+          fact: reputation,
+          target: { characterId: echo.id, lineId },
+        },
+      },
+      reputationFile,
+      'target',
+      'must select a different visible BBS response',
+    );
   });
 });
 

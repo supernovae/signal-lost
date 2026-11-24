@@ -1,0 +1,6 @@
+{
+  "id": "relay",
+  "label": "RELAY",
+  "rank": 1,
+  "when": { "any": ["flag:service-panel-open", "flag:relay-trivia-complete"] }
+}

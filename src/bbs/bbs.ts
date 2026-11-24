@@ -9,6 +9,7 @@ import type {
   DialogueLine,
 } from '../content/schema.ts';
 import type { DoorListing } from '../doors/registry.ts';
+import { deriveAccessLevel, hasAccessLevel } from '../progress/access.ts';
 import { normalizeHandle } from '../progress/save.ts';
 import { mapNodes } from '../world/map.ts';
 import { bbsCopy, fill, messageCredit } from './copy.ts';
@@ -28,6 +29,7 @@ type Secret = Extract<BbsRecord, { kind: 'secret' }>;
 
 interface BbsOffer {
   board: BbsBoard;
+  accessLevels: Content['accessLevels'];
   legacy: Message[];
   bulletins: Map<string, Message>;
   messages: Map<string, Message>;
@@ -81,6 +83,7 @@ export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOf
   );
   return {
     board,
+    accessLevels: content.accessLevels,
     messages,
     legacy,
     bulletins,
@@ -183,7 +186,7 @@ export function createBbs(
   doors?: BbsDoors,
   say?: BbsSay,
 ) {
-  const { board, boards, threads, profiles, secrets, messages } = offer;
+  const { board, boards, threads, profiles, secrets, messages, accessLevels } = offer;
   const facts = () => doors?.facts() ?? offer.initialFacts;
   let route: Route = { phase: 'offline' };
 
@@ -312,13 +315,18 @@ export function createBbs(
   }
 
   function menu(): DispatchResult {
+    const currentFacts = facts();
+    const level = deriveAccessLevel(accessLevels, currentFacts);
     return enter(
       { phase: 'menu' },
       {
         tone: 'system',
         lines: [
           fill(text.title, { title: board.title }),
-          ...board.status.filter(({ when }) => evaluate(when, facts())).map(({ text }) => text),
+          ...(level ? [fill(text.accessLevel, { level: level.label })] : []),
+          ...board.status
+            .filter(({ when }) => evaluate(when, currentFacts))
+            .map(({ text }) => text),
         ],
       },
     );
@@ -563,7 +571,15 @@ export function createBbs(
     }
     if (phase === 'boards' && action === 'BOARD') {
       const next = boards.find((entry) => entry.id === id);
-      if (next) return withHistory(showBoard(next), { kind: 'board', id: next.id });
+      if (next) {
+        if (
+          next.access &&
+          !hasAccessLevel(accessLevels, deriveAccessLevel(accessLevels, facts()), next.access.level)
+        ) {
+          return { output: [{ tone: 'restricted', lines: [next.access.deniedText] }] };
+        }
+        return withHistory(showBoard(next), { kind: 'board', id: next.id });
+      }
     }
     if (route.phase === 'board' && action === 'THREAD') {
       const thread = visibleThreads(route.board.id).find((entry) => entry.id === id);
