@@ -17,6 +17,7 @@ import {
   communitySchema,
   doorMetadataSchema,
   episodeSchema,
+  eventSchema,
   puzzleSchema,
   screenSchema,
   sectorSchema,
@@ -25,6 +26,7 @@ import {
   type Content,
   type BbsRecord,
   type DoorMetadata,
+  type NetworkEvent,
 } from './schema.ts';
 
 export interface ContentError {
@@ -53,6 +55,7 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   transmissions: transmissionSchema,
   archives: archiveSchema,
   bbs: bbsSchema,
+  events: eventSchema,
   doors: triviaDoorSchema,
   characters: characterSchema,
   sectors: sectorSchema,
@@ -78,6 +81,7 @@ export function loadContent(
     transmissions: [],
     archives: [],
     bbs: [],
+    events: [],
     doors: [],
     characters: [],
     sectors: [],
@@ -170,7 +174,7 @@ function checkBbsReferences(
     content.bbs.filter((entry) => entry.kind === 'message').map((entry) => [entry.id, entry]),
   );
   const archives = new Map(content.archives.map((entry) => [entry.id, entry]));
-  const characters = new Set(content.characters.map((entry) => entry.id));
+  const characters = new Map(content.characters.map((entry) => [entry.id, entry]));
   const threads = content.bbs.filter((entry) => entry.kind === 'thread');
   const publicPosts = new Set(
     threads.flatMap((thread) =>
@@ -183,11 +187,27 @@ function checkBbsReferences(
     if ('bbs' in entry && !endpoints.has(entry.bbs)) {
       report(entry, 'bbs', `unknown BBS endpoint "${entry.bbs}"`);
     }
-    if (entry.kind === 'message' && !endpoints.has(entry.board) && !boards.has(entry.board)) {
-      report(entry, 'board', `unknown BBS board "${entry.board}"`);
+    if (entry.kind === 'message' && !endpoints.has(entry.board)) {
+      if (entry.eventOnly)
+        report(entry, 'board', 'an event bulletin must belong to a BBS endpoint');
+      else if (!boards.has(entry.board))
+        report(entry, 'board', `unknown BBS board "${entry.board}"`);
     }
     if (entry.kind === 'profile' && !characters.has(entry.characterId)) {
       report(entry, 'characterId', `unknown character "${entry.characterId}"`);
+    }
+    if (entry.kind === 'board' && entry.sysopCharacterId) {
+      const character = characters.get(entry.sysopCharacterId);
+      if (!character) {
+        report(entry, 'sysopCharacterId', `unknown character "${entry.sysopCharacterId}"`);
+      } else if (
+        !character.lines.some(
+          (line) =>
+            line.kind === 'bbs' && !line.when && !line.failures && !line.once && line.text.length,
+        )
+      ) {
+        report(entry, 'sysopCharacterId', 'SYSOP needs a repeatable, unconditional BBS line');
+      }
     }
     if (entry.kind === 'thread') {
       if (!boards.has(entry.board))
@@ -267,6 +287,42 @@ function checkDuplicates(
   }
 }
 
+function checkEventCycles(
+  events: readonly NetworkEvent[],
+  report: (event: NetworkEvent, cycle: string[]) => void,
+): void {
+  const consumers = new Map<string, NetworkEvent[]>();
+  for (const event of events) {
+    for (const fact of new Set(factsIn(event.when))) {
+      const entries = consumers.get(fact) ?? [];
+      entries.push(event);
+      consumers.set(fact, entries);
+    }
+  }
+
+  const active = new Set<NetworkEvent>();
+  const visited = new Set<NetworkEvent>();
+  function visit(event: NetworkEvent): void {
+    if (active.has(event)) {
+      const path = [...active];
+      report(
+        event,
+        [...path.slice(path.indexOf(event)), event].map(({ id }) => id),
+      );
+      return;
+    }
+    if (visited.has(event)) return;
+    active.add(event);
+    for (const effect of event.effects) {
+      if (effect.kind !== 'grant-flag') continue;
+      for (const consumer of consumers.get(`flag:${effect.flag}`) ?? []) visit(consumer);
+    }
+    active.delete(event);
+    visited.add(event);
+  }
+  events.forEach(visit);
+}
+
 function checkReferences(
   content: Content,
   doors: readonly DoorMetadata[],
@@ -279,6 +335,9 @@ function checkReferences(
       new Set(content[kind].map((r) => r.id)),
     ]),
   ) as Record<keyof Content, Set<string>>;
+  const messages = new Map(
+    content.bbs.filter((entry) => entry.kind === 'message').map((entry) => [entry.id, entry]),
+  );
 
   const granted = new Set<string>();
   for (const record of [...content.episodes, ...content.puzzles]) {
@@ -287,6 +346,11 @@ function checkReferences(
   content.sectors.forEach((s) => s.grantsOnEnter.forEach((g) => granted.add(g)));
   content.artifacts.forEach((a) => a.grantsOnOpen.forEach((g) => granted.add(g)));
   doors.forEach((door) => door.rewards.forEach((g) => granted.add(g)));
+  for (const event of content.events) {
+    for (const effect of event.effects) {
+      if (effect.kind === 'grant-flag') granted.add(`flag:${effect.flag}`);
+    }
+  }
 
   const checkFact = (fact: string, record: object, field: string, isGrant: boolean): void => {
     const { file, prefix } = sources.get(record)!;
@@ -295,6 +359,10 @@ function checkReferences(
     if (kind === null) {
       if (!isGrant && !granted.has(fact)) {
         errors.push({ file, field: prefix + field, message: `nothing grants "${fact}"` });
+      }
+    } else if (head === 'bbs-read') {
+      if (!messages.has(name)) {
+        errors.push({ file, field: prefix + field, message: `unknown BBS message "${name}"` });
       }
     } else if (!ids[kind].has(name)) {
       errors.push({
@@ -307,6 +375,31 @@ function checkReferences(
   const checkCondition = (condition: Condition | undefined, record: object, field: string) => {
     factsIn(condition).forEach((f) => checkFact(f, record, field, false));
   };
+
+  for (const event of content.events) {
+    const { file } = sources.get(event)!;
+    checkCondition(event.when, event, 'when');
+    event.effects.forEach((effect, i) => {
+      if (effect.kind !== 'post-bulletin') return;
+      const message = messages.get(effect.messageId);
+      if (!message?.eventOnly) {
+        errors.push({
+          file,
+          field: `effects.${i}.messageId`,
+          message: message
+            ? 'bulletin message must set eventOnly'
+            : `unknown BBS message "${effect.messageId}"`,
+        });
+      }
+    });
+  }
+  checkEventCycles(content.events, (event, cycle) => {
+    errors.push({
+      file: sources.get(event)!.file,
+      field: 'when',
+      message: `event dependency cycle: ${cycle.join(' -> ')}`,
+    });
+  });
 
   for (const episode of content.episodes) {
     episode.puzzles.forEach((puzzle, i) => {
@@ -345,11 +438,22 @@ function checkReferences(
   for (const artifact of content.artifacts) {
     artifact.grantsOnOpen.forEach((g, i) => checkFact(g, artifact, `grantsOnOpen.${i}`, true));
   }
+  const lineSources = new Map<string, string>();
   for (const character of content.characters) {
+    const { file } = sources.get(character)!;
     character.lines.forEach((line, i) => {
+      const first = lineSources.get(line.id);
+      if (first) {
+        errors.push({
+          file,
+          field: `lines.${i}.id`,
+          message: `duplicate dialogue line id "${line.id}" (first defined in ${first})`,
+        });
+      } else {
+        lineSources.set(line.id, file);
+      }
       checkCondition(line.when, character, `lines.${i}.when`);
       if (line.failures && !ids.puzzles.has(line.failures.puzzle)) {
-        const { file } = sources.get(character)!;
         errors.push({
           file,
           field: `lines.${i}.failures.puzzle`,

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
 import { readContentDir } from '../../src/content/node.ts';
-import type { DoorMetadata } from '../../src/content/schema.ts';
+import type { DoorMetadata, NetworkEvent } from '../../src/content/schema.ts';
 import { loadContent } from '../../src/content/validate.ts';
 import {
   defineDoor,
@@ -14,6 +14,7 @@ import {
 } from '../../src/doors/contract.ts';
 import { createDoorHost } from '../../src/doors/host.ts';
 import { createDoorRegistry } from '../../src/doors/registry.ts';
+import { settleEvents } from '../../src/progress/events.ts';
 import { factsOf, freshSave, openSaveSession, writeSave } from '../../src/progress/save.ts';
 
 const { content } = loadContent(readContentDir('content'));
@@ -60,10 +61,16 @@ function seedBoard() {
 function openBoard(
   storage: ReturnType<typeof memoryStorage>,
   codeDoors: readonly CodeDoorRegistration[] = [],
+  events?: readonly NetworkEvent[],
 ) {
   const { data, persist } = openSaveSession(storage, () => 42);
   const registry = createDoorRegistry(content.doors, codeDoors);
-  const host = createDoorHost(registry, data, persist);
+  const host = createDoorHost(
+    registry,
+    data,
+    persist,
+    events && ((candidate) => settleEvents(events, candidate)),
+  );
   const bbs = createBbsDoorSession(offer, () => data, host);
   return { data, host, bbs };
 }
@@ -279,11 +286,21 @@ describe('BBS door recovery', () => {
     },
   );
 
-  it('keeps the prior slot and facts in memory and on disk when the checkpoint write fails', async () => {
+  it('writes the checkpoint, reward and event together and rolls them back on refusal', async () => {
     const { storage, data } = seedBoard();
     data.doorState['counter'] = { version: 1, payload: { count: 1 } };
     writeSave(storage, data);
-    const { bbs, data: live } = openBoard(storage, [codeDoor('counter')]);
+    const events: NetworkEvent[] = [
+      {
+        id: 'counter-completed',
+        when: 'flag:counted',
+        effects: [
+          { kind: 'grant-flag', flag: 'count-confirmed' },
+          { kind: 'post-bulletin', messageId: 'counter-receipt' },
+        ],
+      },
+    ];
+    const { bbs, data: live } = openBoard(storage, [codeDoor('counter')], events);
     const previous = storage.value;
     await signIn(bbs);
     await bbs.dispatch('DOORS');
@@ -298,10 +315,21 @@ describe('BBS door recovery', () => {
     expect(bbs.screen().phase).toBe('menu');
     expect(storage.setItem).toHaveBeenCalledOnce();
     const proposed = JSON.parse(storage.setItem.mock.calls[0]![1]);
-    expect(proposed.flags).toEqual(['existing', 'counted']);
+    expect(proposed.flags).toEqual(['existing', 'counted', 'count-confirmed']);
+    expect(proposed.events).toEqual({
+      fired: ['counter-completed'],
+      bulletins: ['counter-receipt'],
+    });
     expect(JSON.parse(proposed.doorState.counter)).toEqual({ version: 1, payload: { count: 2 } });
     expect(storage.value).toBe(previous);
     expect(live).toEqual(data);
+
+    await bbs.dispatch('DOORS');
+    await bbs.dispatch('OPEN counter');
+    expect((await bbs.dispatch('+'))!.output[0]?.tone).toBe('door');
+    expect(storage.setItem).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(storage.value)).toEqual(proposed);
+    expect(openBoard(storage).data).toEqual(live);
   });
 
   it.each([

@@ -11,6 +11,7 @@ export function createBbsScene(
   bbs: BbsDoorSession,
   snapshot: () => BbsSnapshot,
   onEffect: (effect: BbsEffect) => boolean,
+  onConnect: () => boolean,
   onSettings: (terminal: Terminal) => void,
   onDisconnect: () => void,
 ): Scene {
@@ -29,10 +30,12 @@ export function createBbsScene(
         if (pending) return;
         pending = true;
         try {
+          const wasOffline = bbs.screen().phase === 'offline';
           const result = await bbs.dispatch(command);
           if (!result || terminal !== active) return;
           const { output, effect, opensSettings } = result;
-          const saved = !effect || onEffect(effect);
+          const connected = wasOffline && bbs.screen().phase === 'login';
+          const saved = connected ? onConnect() : !effect || onEffect(effect);
           const { phase, actions, hint } = bbs.screen();
           if (phase === 'offline') {
             onDisconnect();

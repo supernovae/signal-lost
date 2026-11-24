@@ -7,14 +7,15 @@ import { buildTools } from './app/tools.ts';
 import { getBbsOffer } from './bbs/bbs.ts';
 import { createBbsScene } from './bbs/bbs-view.ts';
 import { createBbsDoorSession } from './bbs/door-session.ts';
-import { applyBbsEffect } from './bbs/progress.ts';
+import { createBbsProgress } from './bbs/progress.ts';
 import { bbsThemeStyles } from './bbs/themes.ts';
 import { loadBundledContent } from './content/browser.ts';
 import type { Episode } from './content/schema.ts';
 import { createDoorHost } from './doors/host.ts';
 import { createDoorRegistry } from './doors/registry.ts';
 import { createAudio } from './audio/audio.ts';
-import { createScriptedDialogue } from './narrative/dialogue.ts';
+import { createDialogueSources } from './narrative/dialogue.ts';
+import { settleEvents } from './progress/events.ts';
 import { openSaveSession } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
 import { createRenderHost } from './render/host.ts';
@@ -35,7 +36,12 @@ const session = openSaveSession({
 });
 const { data } = session;
 const game = createGame({ content, data, persist: session.persist });
-const echo = createScriptedDialogue(content.characters.find((c) => c.id === 'echo')!);
+const voices = createDialogueSources(content.characters);
+const echo = voices.get('echo')!;
+const sayOnBbs = (characterId: string) => {
+  const source = voices.get(characterId);
+  return source && game.say(source, 'bbs');
+};
 
 const audio = createAudio();
 const systemReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -135,16 +141,16 @@ const showHub = (): void => {
           label: 'CONNECT',
           run() {
             const snapshot = () => data;
-            const host = createDoorHost(doors, data, session.persist);
+            const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
+            const host = createDoorHost(doors, data, session.persist, settle);
+            const progress = createBbsProgress(data, settle, session.persist);
             scenes.show(
               createBbsScene(
                 root,
-                createBbsDoorSession(offer, snapshot, host),
+                createBbsDoorSession(offer, snapshot, host, sayOnBbs),
                 snapshot,
-                (effect) => {
-                  applyBbsEffect(data, effect);
-                  return session.persist();
-                },
+                progress.apply,
+                progress.connect,
                 showSettings,
                 showHub,
               ),

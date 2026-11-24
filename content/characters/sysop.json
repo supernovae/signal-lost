@@ -1,0 +1,21 @@
+{
+  "id": "sysop",
+  "name": "SYSOP",
+  "lines": [
+    {
+      "id": "sysop.bbs.greeting",
+      "kind": "bbs",
+      "text": [
+        "Observer. I am the local preservation routine.",
+        "Keel left the line open. I kept what the board could carry."
+      ]
+    },
+    {
+      "id": "sysop.bbs.relay-receipt",
+      "kind": "bbs",
+      "when": "flag:relay-note-read",
+      "priority": 1,
+      "text": ["RECEIPT FILED AT RELAY 07. ORIGINAL REMAINS READ-ONLY."]
+    }
+  ]
+}

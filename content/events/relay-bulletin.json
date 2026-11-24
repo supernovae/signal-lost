@@ -1,0 +1,5 @@
+{
+  "id": "relay-bulletin",
+  "when": "flag:relay-note-read",
+  "effects": [{ "kind": "post-bulletin", "messageId": "relay-bulletin" }]
+}

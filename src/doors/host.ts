@@ -30,6 +30,7 @@ export function createDoorHost(
   registry: DoorRegistry,
   data: SaveData,
   persist: (candidate: SaveData) => boolean,
+  settle?: (candidate: SaveData) => void,
 ) {
   let active: { registration: Registration; door: RunningDoor } | undefined;
   let opening = false;
@@ -96,6 +97,7 @@ export function createDoorHost(
         next.episodes = [...data.episodes];
         next.flags = [...data.flags];
         rewards.forEach((fact) => addFact(next, fact));
+        settle?.(next);
       }
       if (!persist(next)) return fail();
       Object.assign(data, next);

@@ -6,6 +6,7 @@ import type {
   BbsThread,
   BbsTone,
   Content,
+  DialogueLine,
 } from '../content/schema.ts';
 import type { DoorListing } from '../doors/registry.ts';
 import { normalizeHandle } from '../progress/save.ts';
@@ -19,6 +20,7 @@ type Message = Pick<
 > & {
   key: string;
   requires?: Condition;
+  eventOnly?: boolean;
 };
 type MessageBoard = Extract<BbsRecord, { kind: 'message-board' }>;
 type Profile = Extract<BbsRecord, { kind: 'profile' }>;
@@ -27,6 +29,7 @@ type Secret = Extract<BbsRecord, { kind: 'secret' }>;
 interface BbsOffer {
   board: BbsBoard;
   legacy: Message[];
+  bulletins: Map<string, Message>;
   messages: Map<string, Message>;
   boards: MessageBoard[];
   threads: BbsThread[];
@@ -51,11 +54,15 @@ export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOf
     if (!archive.searchOnly) addMessage(`archive:${archive.id}`, archive);
   }
   const legacy = board.archiveIds.flatMap((id) => messages.get(`archive:${id}`) ?? []);
+  const bulletins = new Map<string, Message>();
   for (const entry of content.bbs) {
     if (entry.kind !== 'message') continue;
     const key = `message:${entry.id}`;
     addMessage(key, entry);
-    if (entry.board === board.id) legacy.push(messages.get(key)!);
+    if (entry.board !== board.id) continue;
+    const message = messages.get(key)!;
+    if (entry.eventOnly) bulletins.set(entry.id, message);
+    else legacy.push(message);
   }
 
   const boards = content.bbs.filter(
@@ -76,6 +83,7 @@ export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOf
     board,
     messages,
     legacy,
+    bulletins,
     boards,
     threads,
     profiles,
@@ -97,13 +105,13 @@ type Route =
         | 'sysop'
         | 'boards'
         | 'people'
-        | 'profile'
         | 'directory'
         | 'network'
         | 'history';
     }
   | { phase: 'doors'; parent: 'directory' | 'menu' }
   | { phase: 'board'; board: MessageBoard }
+  | { phase: 'profile'; profile: Profile }
   | { phase: 'thread'; thread: BbsThread; board: MessageBoard };
 
 export interface BbsOutput {
@@ -138,6 +146,8 @@ interface BbsDoors {
   facts(): ReadonlySet<string>;
 }
 
+export type BbsSay = (characterId: string) => DialogueLine | undefined;
+
 const { actions: labels, text } = bbsCopy;
 const actionButton = (command: keyof typeof labels, label = labels[command]): BbsAction => ({
   command,
@@ -167,12 +177,23 @@ function system(...lines: string[]): DispatchResult {
   return { output: [{ tone: 'system', lines }] };
 }
 
-export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: BbsDoors) {
+export function createBbs(
+  offer: BbsOffer,
+  snapshot: () => BbsSnapshot,
+  doors?: BbsDoors,
+  say?: BbsSay,
+) {
   const { board, boards, threads, profiles, secrets, messages } = offer;
   const facts = () => doors?.facts() ?? offer.initialFacts;
   let route: Route = { phase: 'offline' };
 
-  const visibleLegacy = () => offer.legacy.filter((message) => evaluate(message.requires, facts()));
+  const visibleMessages = () => {
+    const current = facts();
+    return [
+      ...offer.legacy.filter((message) => evaluate(message.requires, current)),
+      ...snapshot().events.bulletins.flatMap((id) => offer.bulletins.get(id) ?? []),
+    ];
+  };
   const visiblePosts = (thread: BbsThread) => {
     const current = facts();
     return thread.messages.flatMap(({ kind, id }) => {
@@ -186,6 +207,9 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
     const choice = snapshot().bbs.replies[thread.id];
     return thread.replies.find((reply) => reply.id === choice);
   };
+  const findCharacter = (id: string) => offer.characters.find((character) => character.id === id);
+  const canTalk = (profile: Profile) =>
+    Boolean(say && findCharacter(profile.characterId)?.lines.some((line) => line.kind === 'bbs'));
 
   function screen(): Screen {
     const { phase } = route;
@@ -235,19 +259,20 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
         );
       }
       case 'messages': {
-        const entries = visibleLegacy();
+        const entries = visibleMessages();
         const read = new Set(snapshot().bbsReadMessages);
         return view(
-          entries.map((entry, i) =>
-            link(
+          entries.map((entry, i) => {
+            const unread = entry.eventOnly ? text.newItem : text.unread;
+            return link(
               'READ',
               String(i + 1),
               fill(text.marked, {
                 title: entry.title,
-                state: read.has(entry.key) ? text.read : text.unread,
+                state: read.has(entry.key) ? text.read : unread,
               }),
-            ),
-          ),
+            );
+          }),
           entries.length ? text.messagesHint : text.noMessages,
         );
       }
@@ -270,6 +295,8 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
       }
       case 'people':
         return view(profiles.map(({ id, handle }) => link('PROFILE', id, handle)));
+      case 'profile':
+        return view(canTalk(route.profile) ? [actionButton('TALK')] : []);
       case 'directory':
         return view([...(doors ? [actionButton('DOORS')] : []), actionButton('NETWORK')]);
       default:
@@ -395,9 +422,12 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
         return section({ phase: 'boards' }, labels.BOARDS);
       case 'MESSAGES':
         return section({ phase: 'messages' }, labels.MESSAGES);
-      case 'SYSOP':
+      case 'SYSOP': {
         route = { phase: 'sysop' };
-        return { output: [{ tone: 'sysop', lines: board.sysopGreeting, origin: 'fictional' }] };
+        const line = board.sysopCharacterId ? say?.(board.sysopCharacterId) : undefined;
+        const lines = line?.text ?? board.sysopGreeting ?? [text.noDialogue];
+        return { output: [{ tone: 'sysop', lines, origin: 'fictional' }] };
+      }
       case 'PEOPLE':
         return section({ phase: 'people' }, labels.PEOPLE);
       case 'DIRECTORY':
@@ -498,6 +528,14 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
         const next = fromMenu(action);
         if (next) return next;
       }
+      if (route.phase === 'profile' && action === 'TALK' && canTalk(route.profile)) {
+        const line = say?.(route.profile.characterId);
+        return {
+          output: [
+            { tone: 'private', lines: line?.text ?? [text.noDialogue], origin: 'fictional' },
+          ],
+        };
+      }
       if (phase === 'directory' && action === 'NETWORK') {
         const nodes = mapNodes(offer.sectors, facts());
         const entries: BbsOutput[] = nodes.map(({ sector, enterable }) => ({
@@ -512,7 +550,7 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
     }
 
     if (phase === 'messages' && action === 'READ') {
-      const message = id && /^[0-9]+$/.test(id) ? visibleLegacy()[Number(id) - 1] : undefined;
+      const message = id && /^[0-9]+$/.test(id) ? visibleMessages()[Number(id) - 1] : undefined;
       if (!message) return system(text.chooseMessage, screen().hint);
       return withHistory(
         enter({ phase: 'message' }, messageOutput(message)),
@@ -570,10 +608,10 @@ export function createBbs(offer: BbsOffer, snapshot: () => BbsSnapshot, doors?: 
     if (phase === 'people' && action === 'PROFILE') {
       const profile = profiles.find((entry) => entry.id === id);
       if (profile) {
-        const character = offer.characters.find(({ id }) => id === profile.characterId)!;
+        const character = findCharacter(profile.characterId)!;
         return withHistory(
           enter(
-            { phase: 'profile' },
+            { phase: 'profile', profile },
             {
               tone: 'history',
               origin: 'fictional',

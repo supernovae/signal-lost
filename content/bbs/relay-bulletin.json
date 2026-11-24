@@ -1,0 +1,10 @@
+{
+  "kind": "message",
+  "id": "relay-bulletin",
+  "board": "deep-field",
+  "title": "Relay desk receipt",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "eventOnly": true,
+  "body": ["Local receipt filed for the relay desk note.", "Original remains read-only."]
+}

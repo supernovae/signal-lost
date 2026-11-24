@@ -16,7 +16,7 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 | `src/narrative` | `DialogueSource` and scripted dialogue                                                        | No                      |
 | `src/world`     | Archive search and map logic (pure), and their views                                          | `*-view.ts` only        |
 | `src/content`   | Schemas, conditions, validation, manifest, browser and Node readers                           | No                      |
-| `src/progress`  | Versioned save data in local storage                                                          | No                      |
+| `src/progress`  | Versioned saves and deterministic event settlement                                            | No                      |
 | `src/audio`     | Synthesized sound, unlocked by a user gesture                                                 | Web Audio only          |
 
 `src/integrations` from the original plan does not exist: FORGE's only external connection is plain links, so nothing needed it.
@@ -25,21 +25,30 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 
 1. `src/app/tools.ts` builds the menu from content and state. A puzzle's tool appears when its `requires` condition holds, and the tool is chosen by the puzzle's `kind`.
 2. A view collects an answer and calls `game.attempt(id, answer)`.
-3. `evaluateAnswer` judges it deterministically. On success, the game adds `solved:<id>` and the puzzle's `grants`, checks for episode completion, and saves.
-4. Everything else, including transmissions, archive entries, map nodes, FORGE and ECHO's lines, is gated by conditions over those facts.
+3. `evaluateAnswer` judges it deterministically. On success, the game adds `solved:<id>` and the puzzle's `grants`, checks for episode completion, settles events, and saves.
+4. Transmissions, archive entries, map nodes, FORGE and character dialogue are gated by conditions over saved facts.
 
 ## Content pipeline
 
 `loadContent` validates a map of file paths to parsed JSON, and never throws for bad content. It returns typed content, errors with file and field, and a manifest. The browser bundles `content/**/*.json` through `import.meta.glob`. `scripts/content-plugin.ts` runs the same validation in `npm run build`, fails on errors, and emits `content-manifest.json` with a content version hash. `npm run content:validate` is the same check from the command line.
 
-## ECHO
+## Network events and dialogue
 
-`createScriptedDialogue` implements the small `DialogueSource` interface. The game records which lines were spoken in the save and never reads dialogue to decide progress, so a model-backed source could implement the interface later without changing progression. No such source exists today.
+Puzzle and episode completion, direct grants, door rewards and new BBS message reads settle
+events before the same save write. The BBS also reconciles loaded facts on connect and writes
+when a new event fires. `settleEvents` repeatedly runs the first eligible unfired event in
+binary ID order. Event-granted flags can qualify further events. The loader rejects flag
+dependency cycles. The save preserves firing order and bulletin order, and the BBS combines
+posted IDs with its read ledger to derive `[NEW]` and `[READ]` in Messages.
+
+`createScriptedDialogue` implements the `DialogueSource` interface. The hub's ECHO tool, the
+configured BBS SYSOP and profile TALK select sources by character ID. The game remembers spoken
+line IDs for dialogue selection. Progress transitions depend on facts and declared effects.
 
 ## Extension points
 
 - New transmissions, archive entries and community packages: JSON only.
-- New map locations and ECHO lines: JSON only.
+- New map locations, events and character lines are authored in JSON.
 - A new puzzle kind: a schema, an evaluation case, and a view.
 - A new declarative door goes in `content/doors/`. The content loader discovers its JSON and the BBS lists it when its entry condition holds.
 - A reviewed TypeScript door exports its `defineDoor` lifecycle from a module registered through a literal lazy import in the build-time catalog. The shared validator reads catalog metadata, and the registry loads the module when a signed-in player selects it. [Code door catalog](../src/doors/code-doors.ts)

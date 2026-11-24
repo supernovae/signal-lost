@@ -45,7 +45,7 @@ export const bbsProgressSchema = z
   .prefault({});
 
 export type BbsHistoryEntry = z.infer<typeof historyEntry>;
-export type BbsSnapshot = Pick<SaveData, 'bbs' | 'bbsReadMessages'> & {
+export type BbsSnapshot = Pick<SaveData, 'bbs' | 'bbsReadMessages' | 'events'> & {
   profile: Pick<SaveData['profile'], 'designation' | 'handle'>;
 };
 
@@ -57,14 +57,36 @@ export interface BbsEffect {
   discovery?: string;
 }
 
-export function applyBbsEffect(data: SaveData, effect: BbsEffect): void {
+/** Applies the action and reports whether it added a BBS message read fact. */
+export function applyBbsEffect(data: SaveData, effect: BbsEffect): boolean {
   if (effect.handle !== undefined) data.profile.handle = effect.handle;
+  let newMessage = false;
   if (effect.readKeys?.length) {
-    data.bbsReadMessages = [...new Set([...data.bbsReadMessages, ...effect.readKeys])];
+    const read = new Set(data.bbsReadMessages);
+    for (const key of effect.readKeys) {
+      if (key.startsWith('message:') && !read.has(key)) newMessage = true;
+      read.add(key);
+    }
+    data.bbsReadMessages = [...read];
   }
   if (effect.reply) data.bbs.replies[effect.reply.thread] = effect.reply.choice;
   if (effect.discovery && !data.bbs.discoveries.includes(effect.discovery)) {
     data.bbs.discoveries.push(effect.discovery);
   }
   data.bbs.history = [...data.bbs.history, effect.history].slice(-HISTORY_LIMIT);
+  return newMessage;
+}
+
+export function createBbsProgress(
+  data: SaveData,
+  settle: (candidate: SaveData) => readonly string[],
+  persist: () => boolean,
+) {
+  return {
+    apply(effect: BbsEffect): boolean {
+      if (applyBbsEffect(data, effect)) settle(data);
+      return persist();
+    },
+    connect: () => settle(data).length === 0 || persist(),
+  };
 }

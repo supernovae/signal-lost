@@ -322,6 +322,18 @@
         "ECHO: I have every message ever posted to Deep Field. Both copies.",
         "ECHO: I did not have that one. Nobody I remember wrote it. It is signed, and someone checked it, and it is here anyway."
       ]
+    },
+    {
+      "id": "echo.bbs.greeting",
+      "kind": "bbs",
+      "text": ["ECHO: The relay desk note is available. I have no receipt for your copy yet."]
+    },
+    {
+      "id": "echo.bbs.relay-receipt",
+      "kind": "bbs",
+      "when": "flag:relay-note-read",
+      "priority": 1,
+      "text": ["ECHO: The desk logged your read. A receipt tells me where the copy landed."]
     }
   ]
 }
