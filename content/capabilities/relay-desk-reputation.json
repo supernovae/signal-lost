@@ -1,0 +1,6 @@
+{
+  "id": "relay-desk-reputation",
+  "kind": "reputation",
+  "fact": "flag:relay-note-read",
+  "target": { "characterId": "sysop", "lineId": "sysop.bbs.relay-receipt" }
+}

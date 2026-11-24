@@ -53,10 +53,6 @@ const saveSchema = globalSchema.extend({
   profile: z.object({
     handle: z.string().nullable().transform(normalizeHandle),
     designation: z.string().nullable(),
-    accessLevel: z
-      .string()
-      .refine((level) => level.trim().length > 0)
-      .nullable(),
     seed: z.number().int().min(0).max(0xffffffff),
   }),
 });
@@ -99,7 +95,7 @@ export function freshSave(seed = createSaveSeed()): SaveData {
     bbs: bbsProgressSchema.parse(undefined),
     bbsReadMessages: [],
     events: eventsSchema.parse(undefined),
-    profile: { handle: null, designation: null, accessLevel: null, seed },
+    profile: { handle: null, designation: null, seed },
     doorState: {},
   };
 }
@@ -182,7 +178,7 @@ export function loadSave(
           bbs: bbsProgressSchema.parse(undefined),
           bbsReadMessages: [],
           events: eventsSchema.parse(undefined),
-          profile: { handle: null, designation, accessLevel: null, seed: seed() },
+          profile: { handle: null, designation, seed: seed() },
           doorState: {},
         };
         return { data, status: 'migrated' };

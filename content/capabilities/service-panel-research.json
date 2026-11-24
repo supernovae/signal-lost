@@ -1,0 +1,6 @@
+{
+  "id": "service-panel-research",
+  "kind": "research",
+  "fact": "flag:service-panel-open",
+  "target": { "kind": "archive", "id": "community.second-line" }
+}

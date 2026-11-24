@@ -6,6 +6,7 @@ import { createSceneManager } from './app/scenes.ts';
 import { buildTools } from './app/tools.ts';
 import { getBbsOffer } from './bbs/bbs.ts';
 import { createBbsScene } from './bbs/bbs-view.ts';
+import { bbsCopy, fill } from './bbs/copy.ts';
 import { createBbsDoorSession } from './bbs/door-session.ts';
 import { createBbsProgress } from './bbs/progress.ts';
 import { bbsThemeStyles } from './bbs/themes.ts';
@@ -15,6 +16,7 @@ import { createDoorHost } from './doors/host.ts';
 import { createDoorRegistry } from './doors/registry.ts';
 import { createAudio } from './audio/audio.ts';
 import { createDialogueSources } from './narrative/dialogue.ts';
+import { deriveAccessLevel } from './progress/access.ts';
 import { settleEvents } from './progress/events.ts';
 import { openSaveSession } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
@@ -101,11 +103,12 @@ const utilities: Tool[] = [
     id: 'status',
     label: 'STATUS',
     run(terminal) {
-      const { designation, handle, accessLevel } = data.profile;
+      const { designation, handle } = data.profile;
+      const level = deriveAccessLevel(content.accessLevels, game.facts());
       const lines = ['LINK: ONE-WAY', 'OBSERVERS ONLINE: 1'];
       if (designation) lines.push(`DESIGNATION: ${designation}`);
       if (handle) lines.push(`HANDLE: ${handle}`);
-      if (accessLevel) lines.push(`ACCESS LEVEL: ${accessLevel}`);
+      if (level) lines.push(fill(bbsCopy.text.accessLevel, { level: level.label }));
       terminal.print(lines, 'dim');
     },
   },

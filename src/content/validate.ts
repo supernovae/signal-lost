@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import { CODE_DOORS } from '../doors/code-doors.ts';
 import type { CodeDoorRegistration } from '../doors/contract.ts';
-import { FACT_KINDS, factsIn, type Condition, type FactPrefix } from './conditions.ts';
+import { createScriptedDialogue } from '../narrative/dialogue.ts';
+import { deriveAccessLevel, hasAccessLevel } from '../progress/access.ts';
+import { evaluate, FACT_KINDS, factsIn, type Condition, type FactPrefix } from './conditions.ts';
 import {
   CONTENT_SCHEMA_VERSION,
   hashContent,
@@ -9,10 +11,12 @@ import {
   type ManifestEntry,
 } from './manifest.ts';
 import {
+  accessLevelSchema,
   archiveSchema,
   artifactSchema,
   bbsPublicCommands,
   bbsSchema,
+  capabilitySchema,
   characterSchema,
   communitySchema,
   doorMetadataSchema,
@@ -23,6 +27,7 @@ import {
   sectorSchema,
   transmissionSchema,
   triviaDoorSchema,
+  type Capability,
   type Content,
   type BbsRecord,
   type DoorMetadata,
@@ -50,6 +55,8 @@ export class JsonParseFailure {
 }
 
 const SCHEMAS: Record<keyof Content, z.ZodType> = {
+  accessLevels: accessLevelSchema,
+  capabilities: capabilitySchema,
   episodes: episodeSchema,
   puzzles: puzzleSchema,
   transmissions: transmissionSchema,
@@ -67,7 +74,9 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
 function kindOf(path: string): keyof Content | undefined {
   const parts = path.split('/');
   const directory = parts[parts.lastIndexOf('content') + 1];
-  return directory && directory in SCHEMAS ? (directory as keyof Content) : undefined;
+  if (directory === 'access-levels') return 'accessLevels';
+  if (directory === 'accessLevels') return;
+  return directory && Object.hasOwn(SCHEMAS, directory) ? (directory as keyof Content) : undefined;
 }
 
 export function loadContent(
@@ -76,6 +85,8 @@ export function loadContent(
 ): LoadResult {
   const errors: ContentError[] = [];
   const content: Content = {
+    accessLevels: [],
+    capabilities: [],
     episodes: [],
     puzzles: [],
     transmissions: [],
@@ -323,6 +334,75 @@ function checkEventCycles(
   events.forEach(visit);
 }
 
+function checkCapabilityEffect(
+  content: Content,
+  capability: Capability,
+  report: (message: string) => void,
+): void {
+  const before = new Set(capability.context);
+  const after = new Set([...before, capability.fact]);
+  if (capability.kind === 'research') {
+    const { kind, id } = capability.target;
+    if (kind === 'archive') {
+      const archive = content.archives.find((entry) => entry.id === id);
+      if (!archive) report(`unknown archive "${id}"`);
+      else if (evaluate(archive.requires, before) || !evaluate(archive.requires, after))
+        report(`the research fact must unlock archive "${id}" in the declared context`);
+    } else {
+      const board = content.bbs.find((entry) => entry.kind === 'message-board' && entry.id === id);
+      if (board?.kind !== 'message-board') {
+        report(`unknown BBS message board "${id}"`);
+        return;
+      }
+      const { access } = board;
+      const levels = content.accessLevels;
+      if (
+        !access ||
+        hasAccessLevel(levels, deriveAccessLevel(levels, before), access.level) ||
+        !hasAccessLevel(levels, deriveAccessLevel(levels, after), access.level)
+      ) {
+        report(`the research fact must unlock BBS message board "${id}" in the declared context`);
+      }
+    }
+    return;
+  }
+
+  const { characterId, lineId } = capability.target;
+  const character = content.characters.find((entry) => entry.id === characterId);
+  const reachable = content.bbs.some(
+    (entry) =>
+      (entry.kind === 'board' && entry.sysopCharacterId === characterId) ||
+      (entry.kind === 'profile' && entry.characterId === characterId),
+  );
+  if (
+    !character ||
+    !reachable ||
+    !character.lines.some((line) => line.id === lineId && line.kind === 'bbs')
+  ) {
+    report(`unknown or unreachable BBS response "${lineId}" for "${characterId}"`);
+    return;
+  }
+
+  const dialogue = createScriptedDialogue(character);
+  const state = { seen: new Set<string>(), failures: {} };
+  const previous = dialogue.next('bbs', { ...state, facts: before });
+  const next = dialogue.next('bbs', { ...state, facts: after });
+  const previousText =
+    previous?.text.join('\n') ??
+    content.bbs.find((entry) => entry.kind === 'interface')?.text.noDialogue;
+  const nextText = next?.text.join('\n');
+  if (
+    next?.id !== lineId ||
+    previous?.id === lineId ||
+    !nextText?.trim() ||
+    previousText === nextText
+  ) {
+    report(
+      `the reputation fact must select a different visible BBS response "${lineId}" in the declared context`,
+    );
+  }
+}
+
 function checkReferences(
   content: Content,
   doors: readonly DoorMetadata[],
@@ -376,6 +456,24 @@ function checkReferences(
     factsIn(condition).forEach((f) => checkFact(f, record, field, false));
   };
 
+  const ranks = new Set<number>();
+  for (const level of content.accessLevels) {
+    const { file } = sources.get(level)!;
+    if (ranks.has(level.rank)) {
+      errors.push({ file, field: 'rank', message: `duplicate access level rank ${level.rank}` });
+    }
+    ranks.add(level.rank);
+    checkCondition(level.when, level, 'when');
+  }
+  const firstLevel = content.accessLevels[0];
+  if (firstLevel && !ranks.has(0)) {
+    errors.push({
+      file: sources.get(firstLevel)!.file,
+      field: 'rank',
+      message: 'access levels need an unconditional rank 0',
+    });
+  }
+
   for (const event of content.events) {
     const { file } = sources.get(event)!;
     checkCondition(event.when, event, 'when');
@@ -425,8 +523,19 @@ function checkReferences(
     errors.push({ file: sources.get(entry)!.file, field, message });
   });
   for (const entry of content.bbs) {
-    if (entry.kind !== 'board') continue;
     const { file } = sources.get(entry)!;
+    if (
+      entry.kind === 'message-board' &&
+      entry.access &&
+      !ids.accessLevels.has(entry.access.level)
+    ) {
+      errors.push({
+        file,
+        field: 'access.level',
+        message: `unknown access level "${entry.access.level}"`,
+      });
+    }
+    if (entry.kind !== 'board') continue;
     checkCondition(entry.requires, entry, 'requires');
     entry.status.forEach(({ when }, i) => checkCondition(when, entry, `status.${i}.when`));
     entry.archiveIds.forEach((id, index) => {
@@ -470,6 +579,24 @@ function checkReferences(
       const { file } = sources.get(sector)!;
       errors.push({ file, field: 'puzzle', message: `unknown puzzle "${sector.puzzle}"` });
     }
+  }
+  for (const capability of content.capabilities) {
+    const { file } = sources.get(capability)!;
+    checkFact(capability.fact, capability, 'fact', false);
+    capability.context.forEach((fact, index) =>
+      checkFact(fact, capability, `context.${index}`, false),
+    );
+    if (capability.context.includes(capability.fact)) {
+      errors.push({
+        file,
+        field: 'context',
+        message: 'context cannot contain its capability fact',
+      });
+      continue;
+    }
+    checkCapabilityEffect(content, capability, (message) => {
+      errors.push({ file, field: 'target', message });
+    });
   }
 }
 

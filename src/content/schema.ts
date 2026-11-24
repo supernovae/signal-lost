@@ -11,11 +11,11 @@ const fact = z
     message: 'a fact looks like "solved:puzzle.carrier"',
   });
 const text = z.array(z.string());
+const conditionFact = z.union([fact, z.string().regex(/^bbs-read:[a-z0-9]+([.-][a-z0-9]+)*$/)]);
 
 const condition: z.ZodType<Condition> = z.lazy(() =>
   z.union([
-    fact,
-    z.string().regex(/^bbs-read:[a-z0-9]+([.-][a-z0-9]+)*$/),
+    conditionFact,
     z.strictObject({ all: z.array(condition) }),
     z.strictObject({ any: z.array(condition) }),
     z.strictObject({ not: condition }),
@@ -33,6 +33,46 @@ const record = {
   attribution: attribution.optional(),
   provenance: z.string().optional(),
 };
+
+type AccessCondition = string | { all: AccessCondition[] } | { any: AccessCondition[] };
+const accessCondition: z.ZodType<AccessCondition> = z.lazy(() =>
+  z.union([
+    conditionFact,
+    z.strictObject({ all: z.array(accessCondition).min(1) }),
+    z.strictObject({ any: z.array(accessCondition).min(1) }),
+  ]),
+);
+
+export const accessLevelSchema = z
+  .strictObject({
+    ...record,
+    label: z.string().trim().min(1),
+    rank: z.number().int().nonnegative(),
+    when: accessCondition.optional(),
+  })
+  .refine(({ rank, when }) => (rank === 0 ? when === undefined : when !== undefined), {
+    path: ['when'],
+    message: 'rank 0 must be unconditional and positive ranks must have a condition',
+  });
+
+const capabilityBase = {
+  ...record,
+  fact: conditionFact,
+  context: z.array(conditionFact).default([]),
+};
+
+export const capabilitySchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    ...capabilityBase,
+    kind: z.literal('research'),
+    target: z.strictObject({ kind: z.enum(['archive', 'board']), id }),
+  }),
+  z.strictObject({
+    ...capabilityBase,
+    kind: z.literal('reputation'),
+    target: z.strictObject({ characterId: id, lineId: id }),
+  }),
+]);
 
 const origin = z.enum(['fictional', 'reviewed-community']).default('fictional');
 const messageTone = z.enum(['history', 'ai-fictional', 'recovered', 'private']);
@@ -196,6 +236,7 @@ export const bbsMessageBoardSchema = z.strictObject({
   bbs: id,
   title: z.string().min(1),
   description: text,
+  access: z.strictObject({ level: id, deniedText: z.string().trim().min(1) }).optional(),
 });
 
 export const bbsThreadSchema = z.strictObject({
@@ -291,6 +332,7 @@ export const bbsInterfaceSchema = z.strictObject({
     handle: z.string(),
     signIn: z.string(),
     title: z.string(),
+    accessLevel: z.string(),
     loginHint: z.string(),
     customHint: z.string(),
     menuHint: z.string(),
@@ -426,6 +468,8 @@ export const communitySchema = z.strictObject({
 });
 
 export type Episode = z.infer<typeof episodeSchema>;
+export type AccessLevel = z.infer<typeof accessLevelSchema>;
+export type Capability = z.infer<typeof capabilitySchema>;
 export type Puzzle = z.infer<typeof puzzleSchema>;
 export type CarrierPuzzle = z.infer<typeof carrierPuzzle>;
 export type RasterPuzzle = z.infer<typeof rasterPuzzle>;
@@ -450,6 +494,8 @@ export type Screen = z.infer<typeof screenSchema>;
 export type CommunityPackage = z.infer<typeof communitySchema>;
 
 export interface Content {
+  accessLevels: AccessLevel[];
+  capabilities: Capability[];
   episodes: Episode[];
   puzzles: Puzzle[];
   transmissions: Transmission[];

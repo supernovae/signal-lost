@@ -3,5 +3,9 @@
   "id": "second-line",
   "bbs": "deep-field",
   "title": "SECOND LINE",
-  "description": ["Recovered correspondence filed on the second line."]
+  "description": ["Recovered correspondence filed on the second line."],
+  "access": {
+    "level": "relay",
+    "deniedText": "SECOND LINE SWITCHBOARD: CARRIER HELD. RELAY CLEARANCE REQUIRED."
+  }
 }

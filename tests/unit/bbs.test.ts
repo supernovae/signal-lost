@@ -112,7 +112,9 @@ describe('the DEEP FIELD session', () => {
     expect(bbs.screen().phase).toBe('offline');
     expect(run('connect')).toEqual({ output: [{ tone: 'system', lines: banner }] });
     expect(commands()).toEqual(['DESIGNATION', 'LOGIN', 'HELP', 'DISCONNECT']);
-    expect(lines(run('designation'))).toContain('SIGNED IN AS OBS-02FF');
+    expect(lines(run('designation'))).toEqual(
+      expect.arrayContaining(['SIGNED IN AS OBS-02FF', 'ACCESS LEVEL: VISITOR']),
+    );
     expect(commands()).toEqual([
       'BOARDS',
       'MESSAGES',
@@ -141,7 +143,9 @@ describe('the DEEP FIELD session', () => {
       { tone: 'sysop', origin: 'fictional', lines: sysopGreeting },
     ]);
     data.flags.push('relay-trivia-complete');
-    expect(lines(run('MENU'))).toContain('RELAY DRILL: COMPLETE');
+    expect(lines(run('MENU'))).toEqual(
+      expect.arrayContaining(['ACCESS LEVEL: RELAY', 'RELAY DRILL: COMPLETE']),
+    );
     expect(lines(run('DISCONNECT'))).toEqual(['DISCONNECTED']);
     expect(bbs.screen().phase).toBe('offline');
   });
@@ -255,6 +259,9 @@ it('routes SYSOP and profile TALK to their own scripted lines before and after t
     },
   ]);
   runAll(run, 'MENU', ...openThread.slice(2), 'MENU');
+  expect(data.flags).toContain('relay-note-read');
+  run('BOARDS');
+  expect(lines(run('MENU'))).toContain('ACCESS LEVEL: VISITOR');
   expect(run('SYSOP').output).toEqual([
     {
       tone: 'sysop',
@@ -345,7 +352,7 @@ it('lists both boards and sorts visible threads by authored order and ID while p
     },
   });
   expect(errors).toEqual([]);
-  const { run, commands, data } = boardSession(sessionData(), records);
+  const { run, bbs, commands, data, storage } = boardSession(sessionData(), records);
   runAll(run, 'CONNECT', 'DESIGNATION', 'BOARDS');
   expect(commands().slice(0, 2)).toEqual(['BOARD general', 'BOARD second-line']);
   expect(run('BOARD general extra').effect).toBeUndefined();
@@ -368,10 +375,29 @@ it('lists both boards and sorts visible threads by authored order and ID while p
   expect(data.bbsReadMessages).toEqual(['archive:lore.last-sysop', 'message:relay-note']);
   expect(commands().slice(0, 2)).toEqual(['BACK', 'MENU']);
   runAll(run, 'BACK', 'BACK');
-  expect(lines(run('BOARD second-line'))).toContain('NO THREADS AVAILABLE.');
+  expect(lines(run('HELP')).join(' ')).toContain('BOARD second-line');
+  const before = structuredClone(data);
+  storage.setItem.mockClear();
+  expect(run('BOARD second-line')).toEqual({
+    output: [
+      {
+        tone: 'restricted',
+        lines: ['SECOND LINE SWITCHBOARD: CARRIER HELD. RELAY CLEARANCE REQUIRED.'],
+      },
+    ],
+  });
+  expect(bbs.screen().phase).toBe('boards');
+  expect(commands()).toContain('BOARD second-line');
   expect(commands()).not.toContain('THREAD second-line-thread');
   expect(run('THREAD second-line-thread').effect).toBeUndefined();
+  expect(run('REPLY acknowledge').effect).toBeUndefined();
+  expect(data).toEqual(before);
+  expect(storage.setItem).not.toHaveBeenCalled();
   data.flags.push('service-panel-open');
+  expect(run('BOARD second-line').effect).toEqual({
+    history: { kind: 'board', id: 'second-line' },
+  });
+  expect(bbs.screen().phase).toBe('board');
   expect(commands()).toContain('THREAD second-line-thread');
   expect(run('THREAD second-line-thread').output[1]).toMatchObject({
     tone: 'recovered',
