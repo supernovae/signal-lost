@@ -15,5 +15,7 @@
     "Observer. I am the local preservation routine.",
     "Keel left the line open. I kept what the board could carry."
   ],
-  "archiveIds": ["lore.last-sysop"]
+  "archiveIds": ["lore.last-sysop"],
+  "status": [{ "when": "flag:relay-trivia-complete", "text": "RELAY DRILL: COMPLETE" }],
+  "doorError": "DOOR CARRIER LOST. BACK AT DEEP FIELD."
 }

@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import {
   closeSync,
+  cpSync,
   mkdirSync,
   mkdtempSync,
   openSync,
@@ -13,12 +14,39 @@ import { dirname, join } from 'node:path';
 import { build } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
 import { contentPlugin } from '../../scripts/content-plugin.ts';
+import { getBbsOffer } from '../../src/bbs/bbs.ts';
+import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
 import { evaluate } from '../../src/content/conditions.ts';
 import { hashContent } from '../../src/content/manifest.ts';
 import { readContentDir } from '../../src/content/node.ts';
+import type { DoorMetadata, TriviaDoor } from '../../src/content/schema.ts';
 import { loadContent } from '../../src/content/validate.ts';
+import type { CodeDoorRegistration } from '../../src/doors/contract.ts';
+import { createDoorHost } from '../../src/doors/host.ts';
+import { createDoorRegistry } from '../../src/doors/registry.ts';
+import { factsOf, freshSave } from '../../src/progress/save.ts';
 
 const META = { attribution: { author: 'A', handle: 'a', sourcePr: '#1' }, provenance: 'fixture' };
+const DOOR_FILE = 'content/doors/test.json';
+const DOOR_META: DoorMetadata = {
+  ...META,
+  id: 'test-quiz',
+  name: 'Test quiz',
+  description: 'Equipment test',
+  version: 1,
+  requires: 'completed:e',
+  rewards: ['flag:quiz-complete'],
+  returnTo: 'bbs-menu',
+};
+
+const trivia = (): TriviaDoor => ({
+  ...DOOR_META,
+  kind: 'trivia',
+  saveState: 'question-index',
+  completion: 'all-correct',
+  questions: [{ prompt: ['Choose one'], options: ['Yes', 'No'], answer: 0, retry: ['Try again'] }],
+  success: ['Quiz filed'],
+});
 
 const validFiles = (): Record<string, unknown> => ({
   'content/episodes/e.json': {
@@ -104,6 +132,7 @@ const validFiles = (): Record<string, unknown> => ({
     body: ['Hello'],
     ...META,
   },
+  [DOOR_FILE]: trivia(),
   'content/characters/echo.json': {
     id: 'echo',
     name: 'ECHO',
@@ -153,6 +182,9 @@ describe('schemas and loading', () => {
     ]);
     expect(content.screens[0]!.lines).toEqual(['hello']);
     expect(content.bbs.map((entry) => entry.kind)).toEqual(['board', 'message']);
+    expect(content.doors.map(({ id, kind }) => ({ id, kind }))).toEqual([
+      { id: 'test-quiz', kind: 'trivia' },
+    ]);
     expect(content.episodes[0]!.attribution).toBeUndefined();
     expect(content.sectors[0]!.attribution?.handle).toBe('a');
   });
@@ -185,6 +217,17 @@ describe('schemas and loading', () => {
         id: 'post',
         file: 'content/bbs/message.json',
       });
+      expect(good.manifest.entries).toContainEqual({
+        kind: 'doors',
+        id: 'test-quiz',
+        file: DOOR_FILE,
+      });
+
+      writeFileSync(join(root, 'doors/broken.json'), '{ nope');
+      expect(loadContent(readContentDir(root)).errors).toEqual([
+        expect.objectContaining({ file: 'content/doors/broken.json', field: '(file)' }),
+      ]);
+      rmSync(join(root, 'doors/broken.json'));
 
       writeFileSync(join(root, 'transmissions/broken.json'), '{ nope');
       const bad = loadContent(readContentDir(root));
@@ -192,6 +235,43 @@ describe('schemas and loading', () => {
         file: 'content/transmissions/broken.json',
         field: '(file)',
       });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('discovers and plays a door added as one JSON file to a copy of the real content', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'content-door-'));
+    try {
+      cpSync('content', root, { recursive: true });
+      const before = loadContent(readContentDir(root));
+      expect(before.errors).toEqual([]);
+      expect(before.content.doors.map(({ id }) => id)).not.toContain('test-quiz');
+
+      writeFileSync(
+        join(root, 'doors/test.json'),
+        JSON.stringify({ ...trivia(), requires: 'completed:episode.000' }),
+      );
+      const after = loadContent(readContentDir(root));
+      expect(after.errors).toEqual([]);
+      expect(after.manifest.entries).toContainEqual({
+        kind: 'doors',
+        id: 'test-quiz',
+        file: DOOR_FILE,
+      });
+      const data = freshSave(42);
+      data.episodes.push('episode.000');
+      const offer = getBbsOffer(after.content, factsOf(data))!;
+      const host = createDoorHost(createDoorRegistry(after.content.doors), data, () => true);
+      const bbs = createBbsDoorSession(offer, { ...data.profile, readMessages: [] }, host);
+      await bbs.dispatch('CONNECT');
+      await bbs.dispatch('LOGIN Finch');
+      await bbs.dispatch('DOORS');
+      const action = bbs.screen().actions.find(({ command }) => command === 'OPEN test-quiz')!;
+      expect(action.label).toBe('Test quiz');
+      expect((await bbs.dispatch(action.command))!.output.lines).toContain('Choose one');
+      expect((await bbs.dispatch('1'))!.output.lines).toContain('Quiz filed');
+      expect(data.flags).toContain('quiz-complete');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -226,6 +306,76 @@ describe('conditions', () => {
 });
 
 describe('diagnostics', () => {
+  it.each([
+    [{ requires: 'flag:ungranted' }, 'requires', 'nothing grants'],
+    [{ rewards: ['read:missing'] }, 'rewards.0', 'no archives record'],
+    [
+      { questions: [{ ...trivia().questions[0], answer: 2 }] },
+      'questions.0.answer',
+      'zero-based index',
+    ],
+  ])('reports door errors with file and field for %j', (overrides, field, message) => {
+    const error = firstError({ ...validFiles(), [DOOR_FILE]: { ...trivia(), ...overrides } });
+    expect(error).toMatchObject({ file: DOOR_FILE, field });
+    expect(error.message).toContain(message);
+  });
+
+  it('reports two JSON doors with a repeated ID', () => {
+    const copy = 'content/doors/z.json';
+    const error = firstError({ ...validFiles(), [copy]: trivia() });
+    expect(error).toMatchObject({ file: copy, field: 'id' });
+    expect(error.message).toContain(`first defined in ${DOOR_FILE}`);
+  });
+
+  it('validates code-door metadata and ID collisions without loading the lifecycle', () => {
+    const code = {
+      source: 'src/doors/optional.ts',
+      metadata: DOOR_META,
+      async load() {
+        throw new Error('metadata validation must not load the door');
+      },
+    } satisfies CodeDoorRegistration;
+    expect(loadContent(validFiles(), [code]).errors).toEqual([
+      expect.objectContaining({
+        file: code.source,
+        field: 'id',
+        message: expect.stringContaining(DOOR_FILE),
+      }),
+    ]);
+    const invalid = { ...code, metadata: { ...DOOR_META, version: 0 } };
+    expect(loadContent(validFiles(), [invalid]).errors).toEqual([
+      expect.objectContaining({ file: code.source, field: 'version' }),
+    ]);
+  });
+
+  it('resolves flags granted by both door types in board statuses and reports misspellings', () => {
+    const files = validFiles();
+    const boardFile = 'content/bbs/board.json';
+    const code = {
+      source: 'src/doors/optional.ts',
+      metadata: { ...DOOR_META, id: 'optional', rewards: ['flag:optional-complete'] },
+      async load() {
+        throw new Error('metadata validation must not load the door');
+      },
+    } satisfies CodeDoorRegistration;
+    const status = [
+      { when: 'flag:quiz-complete', text: 'QUIZ COMPLETE' },
+      { when: 'flag:optional-complete', text: 'OPTIONAL DRILL COMPLETE' },
+    ];
+    Object.assign(files[boardFile] as object, { status });
+    const valid = loadContent(files, [code]);
+    expect(valid.errors).toEqual([]);
+    expect(valid.manifest.entries.map(({ id }) => id)).not.toContain('optional');
+    status[1]!.when = 'flag:optional-complet';
+    expect(loadContent(files, [code]).errors).toEqual([
+      expect.objectContaining({
+        file: boardFile,
+        field: 'status.1.when',
+        message: 'nothing grants "flag:optional-complet"',
+      }),
+    ]);
+  });
+
   it.each([
     ['message', 'body', 'not a list', 'body', 'array'],
     ['message', 'board', 'post', 'board', 'unknown BBS board'],
@@ -398,6 +548,17 @@ describe('entry points', () => {
     const result = cli(tree('t.json', { id: 't', title: 'T' }));
     expect(result.status).toBe(1);
     expect(result.output).toContain('content/transmissions/t.json: body:');
+  });
+
+  it('the CLI exits 1 and names a bad door answer field', () => {
+    const root = tree('t.json', { id: 't', title: 'T', body: [] });
+    mkdirSync(join(root, 'doors'));
+    const door = trivia();
+    door.questions[0]!.answer = 99;
+    writeFileSync(join(root, 'doors/test.json'), JSON.stringify(door));
+    const result = cli(root);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(`${DOOR_FILE}: questions.0.answer:`);
   });
 
   it('the build rejects invalid content', async () => {

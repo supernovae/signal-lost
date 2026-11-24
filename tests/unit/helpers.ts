@@ -7,6 +7,7 @@ export function emptyContent(): Content {
     transmissions: [],
     archives: [],
     bbs: [],
+    doors: [],
     characters: [],
     sectors: [],
     artifacts: [],

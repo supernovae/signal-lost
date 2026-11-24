@@ -6,8 +6,11 @@ import { createSceneManager } from './app/scenes.ts';
 import { buildTools } from './app/tools.ts';
 import { getBbsOffer } from './bbs/bbs.ts';
 import { createBbsScene } from './bbs/bbs-view.ts';
+import { createBbsDoorSession } from './bbs/door-session.ts';
 import { loadBundledContent } from './content/browser.ts';
 import type { Episode } from './content/schema.ts';
+import { createDoorHost } from './doors/host.ts';
+import { createDoorRegistry } from './doors/registry.ts';
 import { createAudio } from './audio/audio.ts';
 import { createScriptedDialogue } from './narrative/dialogue.ts';
 import { openSaveSession } from './progress/save.ts';
@@ -18,6 +21,7 @@ import './style.css';
 const root = document.querySelector<HTMLElement>('#app')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#viewscreen')!;
 const { content } = loadBundledContent();
+const doors = createDoorRegistry(content.doors);
 const screen = (id: string): readonly string[] =>
   content.screens.find((s) => s.id === id)?.lines ?? [];
 
@@ -119,11 +123,13 @@ const showHub = (): void => {
           id: 'connect',
           label: 'CONNECT',
           run() {
+            const identity = { ...data.profile, readMessages: data.bbsReadMessages };
+            const host = createDoorHost(doors, data, session.persist);
             scenes.show(
               createBbsScene(
                 root,
-                offer,
-                { ...data.profile, readMessages: data.bbsReadMessages },
+                createBbsDoorSession(offer, identity, host),
+                identity,
                 (effect) => {
                   if ('handle' in effect) data.profile.handle = effect.handle;
                   else data.bbsReadMessages.push(effect.readKey);

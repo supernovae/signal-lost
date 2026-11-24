@@ -207,7 +207,8 @@ export function clearSave(storage: SaveStorage): boolean {
 
 export function openSaveSession(storage: SaveStorage, seed?: () => number) {
   const { data, status } = loadSave(storage, seed);
-  const persist = (): boolean => status !== 'unsupported' && writeSave(storage, data);
+  const persist = (candidate: SaveData = data): boolean =>
+    status !== 'unsupported' && writeSave(storage, candidate);
   const clear = (): boolean => status !== 'unsupported' && clearSave(storage);
 
   if (status === 'new' || status === 'migrated' || status === 'reset') persist();
