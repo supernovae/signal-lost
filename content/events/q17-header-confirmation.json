@@ -1,0 +1,18 @@
+{
+  "id": "q17-header-confirmation",
+  "when": "bbs-read:q17-header-confirmation",
+  "effects": [
+    {
+      "kind": "grant-flag",
+      "flag": "deferred-headers-verified"
+    },
+    {
+      "kind": "grant-flag",
+      "flag": "deferred-verified"
+    },
+    {
+      "kind": "post-bulletin",
+      "messageId": "q17-header-confirmation"
+    }
+  ]
+}

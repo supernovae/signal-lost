@@ -14,6 +14,7 @@ import {
   accessLevelSchema,
   archiveSchema,
   artifactSchema,
+  bbsCheckVerbs,
   bbsPublicCommands,
   bbsSchema,
   capabilitySchema,
@@ -189,10 +190,55 @@ function checkBbsReferences(
   const threads = content.bbs.filter((entry) => entry.kind === 'thread');
   const publicPosts = new Set(
     threads.flatMap((thread) =>
-      thread.messages.filter((ref) => ref.kind === 'message').map((ref) => ref.id),
+      thread.messages
+        .filter((ref) => ref.kind === 'message' && messages.get(ref.id)?.board === thread.board)
+        .map((ref) => ref.id),
     ),
   );
   const commands = new Map<string, Set<string>>();
+  const responseClaims = new Map<string, number>();
+  for (const { check } of boards.values()) {
+    if (!check) continue;
+    const { responseMessageId: id } = check;
+    responseClaims.set(id, (responseClaims.get(id) ?? 0) + 1);
+  }
+
+  for (const entry of boards.values()) {
+    const { check } = entry;
+    if (!check) continue;
+    check.evidenceMessageIds.forEach((id, index) => {
+      const field = `check.evidenceMessageIds.${index}`;
+      const post = messages.get(id);
+      if (!post) {
+        report(entry, field, `unknown BBS message "${id}"`);
+      } else if (
+        post.eventOnly ||
+        !publicPosts.has(id) ||
+        boards.get(post.board)?.bbs !== entry.bbs
+      ) {
+        report(entry, field, 'evidence must be a public thread message on this endpoint');
+      }
+    });
+
+    const field = 'check.responseMessageId';
+    const { responseMessageId: id } = check;
+    const response = messages.get(id);
+    if (!response?.eventOnly || response.board !== entry.bbs) {
+      report(entry, field, 'response must be an event-only message on this endpoint');
+      continue;
+    }
+    if (responseClaims.get(id) !== 1) {
+      report(entry, field, 'response must belong to exactly one board check');
+    }
+    const publications = content.events.flatMap((event) =>
+      event.effects
+        .filter((effect) => effect.kind === 'post-bulletin' && effect.messageId === id)
+        .map(() => event.when),
+    );
+    if (publications.length !== 1 || publications[0] !== `bbs-read:${id}`) {
+      report(entry, field, 'response needs one bulletin posting triggered by its own BBS read');
+    }
+  }
 
   for (const entry of content.bbs) {
     if ('bbs' in entry && !endpoints.has(entry.bbs)) {
@@ -252,7 +298,8 @@ function checkBbsReferences(
       });
     }
     if (entry.kind === 'secret') {
-      const tokens = commands.get(entry.bbs) ?? new Set<string>(bbsPublicCommands);
+      const tokens =
+        commands.get(entry.bbs) ?? new Set<string>([...bbsPublicCommands, ...bbsCheckVerbs]);
       const token = entry.command.toUpperCase();
       if (tokens.has(token))
         report(entry, 'command', `reserved or duplicate BBS command "${token}"`);
@@ -359,6 +406,7 @@ function checkCapabilityEffect(
       if (
         !access ||
         hasAccessLevel(levels, deriveAccessLevel(levels, before), access.level) ||
+        !evaluate(board.requires, after) ||
         !hasAccessLevel(levels, deriveAccessLevel(levels, after), access.level)
       ) {
         report(`the research fact must unlock BBS message board "${id}" in the declared context`);
@@ -524,6 +572,9 @@ function checkReferences(
   });
   for (const entry of content.bbs) {
     const { file } = sources.get(entry)!;
+    if (entry.kind === 'board' || entry.kind === 'message-board') {
+      checkCondition(entry.requires, entry, 'requires');
+    }
     if (
       entry.kind === 'message-board' &&
       entry.access &&
@@ -536,7 +587,6 @@ function checkReferences(
       });
     }
     if (entry.kind !== 'board') continue;
-    checkCondition(entry.requires, entry, 'requires');
     entry.status.forEach(({ when }, i) => checkCondition(when, entry, `status.${i}.when`));
     entry.archiveIds.forEach((id, index) => {
       if (!ids.archives.has(id)) {

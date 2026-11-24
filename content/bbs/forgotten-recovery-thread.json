@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "forgotten-recovery-thread",
+  "board": "forgotten-board",
+  "title": "Damaged recovery directory",
+  "order": 3,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "q17-recovery-directory"
+    }
+  ]
+}

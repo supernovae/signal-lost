@@ -1,0 +1,15 @@
+{
+  "kind": "message",
+  "id": "q17-recovery-directory",
+  "board": "forgotten-board",
+  "title": "Retained source labels",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "body": [
+    "DAMAGED DIRECTORY / LABELS ONLY",
+    "queue-reader | INACCESSIBLE",
+    "signature-checker | INACCESSIBLE",
+    "replay-writer | INACCESSIBLE",
+    "Only the label records survived in this directory. Their contents could not be checked."
+  ]
+}

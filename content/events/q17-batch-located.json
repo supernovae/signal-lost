@@ -1,0 +1,14 @@
+{
+  "id": "q17-batch-located",
+  "when": "bbs-read:q17-batch-located",
+  "effects": [
+    {
+      "kind": "grant-flag",
+      "flag": "deferred-batch-located"
+    },
+    {
+      "kind": "post-bulletin",
+      "messageId": "q17-batch-located"
+    }
+  ]
+}

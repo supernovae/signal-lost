@@ -1,0 +1,18 @@
+{
+  "id": "q17-custody-confirmation",
+  "when": "bbs-read:q17-custody-confirmation",
+  "effects": [
+    {
+      "kind": "grant-flag",
+      "flag": "deferred-custody-verified"
+    },
+    {
+      "kind": "grant-flag",
+      "flag": "deferred-verified"
+    },
+    {
+      "kind": "post-bulletin",
+      "messageId": "q17-custody-confirmation"
+    }
+  ]
+}

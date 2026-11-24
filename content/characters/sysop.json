@@ -16,6 +16,39 @@
       "when": "flag:relay-note-read",
       "priority": 1,
       "text": ["RECEIPT FILED AT RELAY 07. ORIGINAL REMAINS READ-ONLY."]
+    },
+    {
+      "id": "sysop.bbs.q17-unresolved",
+      "kind": "bbs",
+      "when": "bbs-read:q17-queue-index",
+      "priority": 2,
+      "text": [
+        "Q17 ORIGINALS SEALED. DO NOT OVERWRITE THE INDEX ON THE STRENGTH OF A MEMORY.",
+        "THE BATCH RECEIPT LEADS TO Q17 CUSTODY DESK. CUSTODY ACCOUNTING IS AVAILABLE THERE."
+      ]
+    },
+    {
+      "id": "sysop.bbs.q17-headers",
+      "kind": "bbs",
+      "when": "flag:deferred-headers-verified",
+      "priority": 3,
+      "text": ["HEADER PROOF ACCEPTED. CUSTODY AUDIT PENDING. ORIGINALS REMAIN SEALED."]
+    },
+    {
+      "id": "sysop.bbs.q17-custody",
+      "kind": "bbs",
+      "when": "flag:deferred-custody-verified",
+      "priority": 3,
+      "text": ["CUSTODY AUDIT FILED. BOTH DISPATCH COPIES MATCH THEIR SEALED ORIGINALS."]
+    },
+    {
+      "id": "sysop.bbs.q17-both",
+      "kind": "bbs",
+      "when": {
+        "all": ["flag:deferred-headers-verified", "flag:deferred-custody-verified"]
+      },
+      "priority": 4,
+      "text": ["HEADER PROOF AND CUSTODY AUDIT FILED. ORIGINALS REMAIN READ-ONLY."]
     }
   ]
 }

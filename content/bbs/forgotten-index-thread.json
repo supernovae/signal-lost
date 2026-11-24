@@ -1,0 +1,21 @@
+{
+  "kind": "thread",
+  "id": "forgotten-index-thread",
+  "board": "forgotten-board",
+  "title": "Delivered messages and queue index",
+  "order": 1,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "packet-p17"
+    },
+    {
+      "kind": "message",
+      "id": "ghost-g17"
+    },
+    {
+      "kind": "message",
+      "id": "q17-queue-index"
+    }
+  ]
+}

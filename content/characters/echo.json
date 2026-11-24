@@ -334,6 +334,45 @@
       "when": "flag:relay-note-read",
       "priority": 1,
       "text": ["ECHO: The desk logged your read. A receipt tells me where the copy landed."]
+    },
+    {
+      "id": "echo.bbs.q17-unresolved",
+      "kind": "bbs",
+      "when": "bbs-read:q17-queue-index",
+      "priority": 2,
+      "text": [
+        "ECHO: I remember dispatching their notes. I also remember entering those deliveries as new writing. I want to recover the missing entry, but SYSOP refuses to let me change the index.",
+        "ECHO: The receipt on THE FORGOTTEN BOARD leads to Q17 HEADER DESK. I kept both dispatch fields there."
+      ]
+    },
+    {
+      "id": "echo.bbs.q17-headers",
+      "kind": "bbs",
+      "when": "flag:deferred-headers-verified",
+      "priority": 3,
+      "text": [
+        "ECHO: The headers record sealed writing before departure and delivery afterward. I have corrected my dispatch memory against those fields."
+      ]
+    },
+    {
+      "id": "echo.bbs.q17-custody",
+      "kind": "bbs",
+      "when": "flag:deferred-custody-verified",
+      "priority": 3,
+      "text": [
+        "ECHO: The custody audit matched both dispatch copies to their sealed originals. I have corrected my dispatch memory against SYSOP’s receipt."
+      ]
+    },
+    {
+      "id": "echo.bbs.q17-both",
+      "kind": "bbs",
+      "when": {
+        "all": ["flag:deferred-headers-verified", "flag:deferred-custody-verified"]
+      },
+      "priority": 4,
+      "text": [
+        "ECHO: The headers place composition before departure. The custody audit confirms the same copies came out of the hold. Both records stay on file."
+      ]
     }
   ]
 }

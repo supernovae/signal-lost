@@ -1,101 +1,14 @@
-import { evaluate, type Condition } from '../content/conditions.ts';
-import type {
-  Archive,
-  BbsBoard,
-  BbsRecord,
-  BbsThread,
-  BbsTone,
-  Content,
-  DialogueLine,
-} from '../content/schema.ts';
+import { evaluate } from '../content/conditions.ts';
+import type { BbsThread, BbsTone, DialogueLine } from '../content/schema.ts';
 import type { DoorListing } from '../doors/registry.ts';
 import { deriveAccessLevel, hasAccessLevel } from '../progress/access.ts';
 import { normalizeHandle } from '../progress/save.ts';
 import { mapNodes } from '../world/map.ts';
 import { bbsCopy, fill, messageCredit } from './copy.ts';
+import type { BbsOffer, Message, MessageBoard, Profile } from './offer.ts';
 import type { BbsEffect, BbsHistoryEntry, BbsSnapshot } from './progress.ts';
 
-type Message = Pick<
-  Archive,
-  'title' | 'from' | 'date' | 'body' | 'origin' | 'presentation' | 'attribution'
-> & {
-  key: string;
-  requires?: Condition;
-  eventOnly?: boolean;
-};
-type MessageBoard = Extract<BbsRecord, { kind: 'message-board' }>;
-type Profile = Extract<BbsRecord, { kind: 'profile' }>;
-type Secret = Extract<BbsRecord, { kind: 'secret' }>;
-
-interface BbsOffer {
-  board: BbsBoard;
-  accessLevels: Content['accessLevels'];
-  legacy: Message[];
-  bulletins: Map<string, Message>;
-  messages: Map<string, Message>;
-  boards: MessageBoard[];
-  threads: BbsThread[];
-  profiles: Profile[];
-  secrets: Secret[];
-  characters: Content['characters'];
-  sectors: Content['sectors'];
-  initialFacts: ReadonlySet<string>;
-}
-
-export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOffer | undefined {
-  const board = content.bbs.find(
-    (entry) => entry.kind === 'board' && evaluate(entry.requires, facts),
-  );
-  if (!board || board.kind !== 'board') return;
-
-  const messages = new Map<string, Message>();
-  const addMessage = (key: string, message: Omit<Message, 'key'>) => {
-    messages.set(key, { ...message, key });
-  };
-  for (const archive of content.archives) {
-    if (!archive.searchOnly) addMessage(`archive:${archive.id}`, archive);
-  }
-  const legacy = board.archiveIds.flatMap((id) => messages.get(`archive:${id}`) ?? []);
-  const bulletins = new Map<string, Message>();
-  for (const entry of content.bbs) {
-    if (entry.kind !== 'message') continue;
-    const key = `message:${entry.id}`;
-    addMessage(key, entry);
-    if (entry.board !== board.id) continue;
-    const message = messages.get(key)!;
-    if (entry.eventOnly) bulletins.set(entry.id, message);
-    else legacy.push(message);
-  }
-
-  const boards = content.bbs.filter(
-    (entry): entry is MessageBoard => entry.kind === 'message-board' && entry.bbs === board.id,
-  );
-  const boardIds = new Set(boards.map((entry) => entry.id));
-  const threads = content.bbs.filter(
-    (entry): entry is BbsThread => entry.kind === 'thread' && boardIds.has(entry.board),
-  );
-  threads.sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const profiles = content.bbs.filter(
-    (entry): entry is Profile => entry.kind === 'profile' && entry.bbs === board.id,
-  );
-  const secrets = content.bbs.filter(
-    (entry): entry is Secret => entry.kind === 'secret' && entry.bbs === board.id,
-  );
-  return {
-    board,
-    accessLevels: content.accessLevels,
-    messages,
-    legacy,
-    bulletins,
-    boards,
-    threads,
-    profiles,
-    secrets,
-    characters: content.characters,
-    sectors: content.sectors,
-    initialFacts: facts,
-  };
-}
+export { getBbsOffer } from './offer.ts';
 
 type Route =
   | {
@@ -190,6 +103,10 @@ export function createBbs(
   const facts = () => doors?.facts() ?? offer.initialFacts;
   let route: Route = { phase: 'offline' };
 
+  const visibleBoards = () => {
+    const current = facts();
+    return boards.filter((entry) => evaluate(entry.requires, current));
+  };
   const visibleMessages = () => {
     const current = facts();
     return [
@@ -280,10 +197,11 @@ export function createBbs(
         );
       }
       case 'boards':
-        return view(boards.map(({ id, title }) => link('BOARD', id, title)));
+        return view(visibleBoards().map(({ id, title }) => link('BOARD', id, title)));
       case 'board':
         return view(
           visibleThreads(route.board.id).map(({ id, title }) => link('THREAD', id, title)),
+          route.board.check?.prompt,
         );
       case 'thread': {
         if (!visiblePosts(route.thread).length) return view([]);
@@ -294,6 +212,7 @@ export function createBbs(
             selected: selected?.id === id,
             disabled: Boolean(selected),
           })),
+          route.board.check?.prompt,
         );
       }
       case 'people':
@@ -422,6 +341,23 @@ export function createBbs(
     delta: Omit<BbsEffect, 'history'> = {},
   ): DispatchResult {
     return { ...result, effect: { history, ...delta } };
+  }
+
+  function checkAnswer(
+    check: NonNullable<MessageBoard['check']>,
+    answer: string | undefined,
+    current: ReadonlySet<string>,
+  ) {
+    if (!check.evidenceMessageIds.every((id) => current.has(`bbs-read:${id}`))) {
+      return system(check.missingEvidence);
+    }
+    if (answer !== check.answer.toLowerCase()) return system(check.incorrect);
+
+    const response = offer.bulletins.get(check.responseMessageId);
+    if (!response) return system(text.invalid, screen().hint);
+    const result = { output: [messageOutput(response)] };
+    if (snapshot().bbsReadMessages.includes(response.key)) return result;
+    return withHistory(result, { kind: 'read', id: response.key }, { readKeys: [response.key] });
   }
 
   function fromMenu(action: string): DispatchResult | undefined {
@@ -570,7 +506,7 @@ export function createBbs(
       return id ? { output: [], opensDoor: id } : system(text.chooseDoor, screen().hint);
     }
     if (phase === 'boards' && action === 'BOARD') {
-      const next = boards.find((entry) => entry.id === id);
+      const next = visibleBoards().find((entry) => entry.id === id);
       if (next) {
         if (
           next.access &&
@@ -579,6 +515,13 @@ export function createBbs(
           return { output: [{ tone: 'restricted', lines: [next.access.deniedText] }] };
         }
         return withHistory(showBoard(next), { kind: 'board', id: next.id });
+      }
+    }
+    if (route.phase === 'board' || route.phase === 'thread') {
+      const { check } = route.board;
+      if (check?.verb === action) {
+        const current = facts();
+        if (evaluate(route.board.requires, current)) return checkAnswer(check, id, current);
       }
     }
     if (route.phase === 'board' && action === 'THREAD') {

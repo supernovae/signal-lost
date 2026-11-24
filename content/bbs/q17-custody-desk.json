@@ -1,0 +1,19 @@
+{
+  "kind": "message-board",
+  "id": "q17-custody-desk",
+  "bbs": "deep-field",
+  "title": "Q17 CUSTODY DESK",
+  "description": [
+    "SYSOP kept the originals sealed. Read the originals, the dispatch comparison and the migration hold receipt."
+  ],
+  "requires": "flag:deferred-batch-located",
+  "check": {
+    "verb": "SUBMIT",
+    "answer": "DEFERRED",
+    "evidenceMessageIds": ["q17-originals", "q17-comparison", "q17-hold-receipt"],
+    "prompt": "Type SUBMIT <finding> after accounting for both copies and the hold.",
+    "missingEvidence": "Read Sealed originals, Dispatch comparison and Migration hold receipt before filing a custody finding.",
+    "incorrect": "Reconcile the finding with the migration hold receipt. Check what was sealed and whether the release changed either copy.",
+    "responseMessageId": "q17-custody-confirmation"
+  }
+}

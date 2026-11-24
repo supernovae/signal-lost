@@ -1,0 +1,11 @@
+{
+  "kind": "message",
+  "id": "q17-queue-policy",
+  "board": "q17-header-desk",
+  "title": "Retained queue policy",
+  "from": "RELAY 07",
+  "date": "UNDATED",
+  "body": [
+    "WRITTEN records sealed composition. DELIVERED records dispatch, not new authorship. A migration-held record released unchanged is DEFERRED."
+  ]
+}

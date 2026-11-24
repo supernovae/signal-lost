@@ -1,0 +1,13 @@
+{
+  "kind": "message",
+  "id": "q17-departure-ledger",
+  "board": "forgotten-board",
+  "title": "Departure ledger",
+  "from": "RELAY 07",
+  "date": "UNDATED",
+  "body": [
+    "PACKET last present on 2001-03-02 | checkpoint 120.",
+    "GHOST last present on 2001-03-03 | checkpoint 121.",
+    "Checkpoints mark the last recorded presence of each handle on this board."
+  ]
+}

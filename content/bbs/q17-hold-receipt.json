@@ -1,0 +1,12 @@
+{
+  "kind": "message",
+  "id": "q17-hold-receipt",
+  "board": "q17-custody-desk",
+  "title": "Q17 custody receipt",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "body": [
+    "Q17: migration hold; sealed before departure; release unchanged after checkpoint 121.",
+    "Custody policy classifies an unchanged release from migration hold as DEFERRED."
+  ]
+}
