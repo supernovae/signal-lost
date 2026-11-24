@@ -1,5 +1,6 @@
 import { evaluate } from '../content/conditions.ts';
-import { doorMetadataSchema, type DoorMetadata, type TriviaDoor } from '../content/schema.ts';
+import { doorMetadataSchema, type DeclarativeDoor, type DoorMetadata } from '../content/schema.ts';
+import { createAdventureDoor } from './adventure.ts';
 import { CODE_DOORS } from './code-doors.ts';
 import type { CodeDoorRegistration } from './contract.ts';
 import { createTriviaDoor } from './trivia.ts';
@@ -7,7 +8,7 @@ import { createTriviaDoor } from './trivia.ts';
 export type DoorListing = Pick<DoorMetadata, 'id' | 'name' | 'description'>;
 
 export function createDoorRegistry(
-  declarative: readonly TriviaDoor[],
+  declarative: readonly DeclarativeDoor[],
   codeDoors: readonly CodeDoorRegistration[] = CODE_DOORS,
 ) {
   const entries = new Map<string, Omit<CodeDoorRegistration, 'source'>>();
@@ -19,7 +20,9 @@ export function createDoorRegistry(
 
   for (const record of declarative) {
     const door = structuredClone(record);
-    register(door, async () => ({ default: createTriviaDoor(door) }));
+    register(door, async () => ({
+      default: door.kind === 'adventure' ? createAdventureDoor(door) : createTriviaDoor(door),
+    }));
   }
   for (const { metadata, load } of codeDoors) register(doorMetadataSchema.parse(metadata), load);
 

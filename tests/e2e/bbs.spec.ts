@@ -298,6 +298,158 @@ test('verifies Q17 from its headers and retains the confirmation after reload', 
   await expectSavedProof();
 });
 
+for (const journey of [
+  {
+    input: 'keyboard',
+    desk: 'Q17 HEADER DESK',
+    evidence: ['Q17 message headers', 'Queue policy'],
+    proof: 'HEADER ANALYSIS',
+    outcome: ['INDEX COPY', 'Index the labeled training copy', 'LABELED COPY INDEXED'],
+  },
+  {
+    input: 'pointer',
+    desk: 'Q17 CUSTODY DESK',
+    evidence: ['Sealed originals', 'Dispatch comparison', 'Migration hold receipt'],
+    proof: 'CUSTODY AUDIT',
+    outcome: ['SEALED REFERENCES', 'Restrict to sealed references', 'SEALED REFERENCES ONLY'],
+  },
+] as const) {
+  test(`plays the Forgotten Archive after ${journey.proof} by ${journey.input}`, async ({
+    page,
+  }) => {
+    await seedSaveOnce(page, completedV1);
+    const log = page.getByRole('log');
+    const screen = log.locator('.door').last();
+    const system = log.locator('.system').last();
+    const prompt = page.getByLabel('BBS>');
+    const button = (name: string) => page.getByRole('button', { name, exact: true });
+    const activate = (name: string) => activateBbsButton(page, journey.input, name);
+    const type = (command: string) => typeCommand(page, 'BBS>', command);
+    const shelfButton = (command: string, label: string) => `[${command}] ${label}`;
+    const act = (command: string, label: string) =>
+      journey.input === 'keyboard'
+        ? type(command)
+        : activate(command === 'EXIT' ? label : shelfButton(command, label));
+    const read = (fragment: string) =>
+      act(`INSPECT ${fragment} FRAGMENT`, `Inspect ${fragment} fragment`);
+    const open = '[OPEN forgotten-archive] THE FORGOTTEN ARCHIVE';
+    const order = 'SEAL / ROUTE / ACK';
+    const retry = 'ROUTE / SEAL / ACK';
+    const insufficient = 'Inspect all three training fragments before recording the procedure.';
+    const notebook = '[NOTEBOOK] Read notebook';
+
+    async function signIn() {
+      await joinWithEnter(page);
+      if (journey.input === 'keyboard') {
+        await typeCommand(page, 'OBS>', 'CONNECT');
+        await type('DESIGNATION');
+      } else {
+        await connect(page).click();
+        await activate('USE DESIGNATION (OBS-02FF)');
+      }
+      await expect(system).toContainText('DEEP FIELD MAIN MENU');
+    }
+
+    async function openArchive() {
+      await activate('DOORS');
+      await activate(open);
+    }
+
+    await page.goto('./');
+    await signIn();
+    await activate('DOORS');
+    await expect(button(open)).toHaveCount(0);
+    await type('OPEN forgotten-archive');
+    await expect(log.locator('.restricted').last()).toContainText('DOOR UNAVAILABLE.');
+    await activate('MAIN MENU');
+    await activate('BOARDS');
+    await activate('THE FORGOTTEN BOARD');
+    await activate('Delivered messages and queue index');
+    await type('SEARCH Q17');
+    await expect(log.getByText('Q17 batch located', { exact: true })).toBeVisible();
+    await activate('BACK');
+    if (journey.input === 'keyboard') {
+      await activate('Departure ledger');
+      await activate('BACK');
+    }
+    await activate('BACK');
+    await activate(journey.desk);
+    for (const evidence of journey.evidence) {
+      await activate(evidence);
+      await activate('BACK');
+    }
+    await type('SUBMIT DEFERRED');
+    await expect(log.locator('.ai-fictional').last()).toContainText(
+      `DEFERRED VERIFIED / ${journey.proof}`,
+    );
+    await activate('MAIN MENU');
+    await openArchive();
+    await expect(screen).toContainText('ARCHIVE VESTIBULE');
+    await act('TRAINING SHELF', 'Visit training shelf');
+    await expect(screen).toContainText(
+      'POSTED RULE: An operation may only consume outputs already produced.',
+    );
+    await act(order, 'Submit order');
+    await expect(screen).toContainText(insufficient);
+    await expect(button(notebook)).toHaveCount(0);
+    await activate('[INSPECT SEAL FRAGMENT] Inspect SEAL fragment');
+    await expect(screen).toContainText('SEAL fixes an immutable original');
+    await read('ROUTE');
+    await expect(screen).toContainText('ROUTE requires the seal reference');
+
+    await page.reload();
+    await signIn();
+    await openArchive();
+    await expect(screen).toContainText('TRAINING SHELF');
+    await act(retry, 'Submit order');
+    await expect(screen).toContainText('ROUTE is missing the seal reference.');
+    await expect(button('[INSPECT ACK FRAGMENT] Inspect ACK fragment')).toBeVisible();
+    await act(order, 'Submit order');
+    await expect(screen).toContainText(insufficient);
+    await read('ACK');
+    await expect(screen).toContainText('ACK requires the destination receipt');
+    await act(order, 'Submit order');
+    await expect(screen).toContainText('PROCEDURE LEARNED.');
+    await expect(button(notebook)).toBeVisible();
+    await act('NOTEBOOK', 'Read notebook');
+    await expect(screen).toContainText(`TRAINING NOTEBOOK: ${order}.`);
+
+    await act('VESTIBULE', 'Return to vestibule');
+    await act('COMPARISON DESK', 'Visit comparison desk');
+    await act('TALK GHOST', 'Open GHOST reconstruction');
+    await expect(screen).toContainText('GHOST // RETAINED INDEX NOTE');
+    await act('INSPECT COPY SCOPE', 'Inspect copy scope');
+    await act('TALK GHOST', 'Open GHOST reconstruction');
+    await expect(screen).toContainText('GHOST // RETAINED BENCH NOTE');
+    await act('PRESERVATION VAULT', 'Visit preservation vault');
+    await act('INSPECT CUSTODY POLICY', 'Inspect custody policy');
+    await act('TALK PACKET', 'Open PACKET reconstruction');
+    await expect(screen).toContainText('PACKET // RETAINED CUSTODY NOTE');
+    const [decision, label, result] = journey.outcome;
+    await act(decision, label);
+    await expect(screen).toContainText(`FILING RESULT: ${result}.`);
+    await expect(button(shelfButton(decision, label))).toHaveCount(0);
+    await act('EXIT', 'EXIT');
+    await expect(system).toContainText('DEEP FIELD MAIN MENU');
+    await expect(prompt).toBeFocused();
+    await expect(log.getByText('SIGNED IN AS OBS-02FF', { exact: true })).toHaveCount(1);
+    await activate('MESSAGES');
+    await expect(system).toContainText('DEEP FIELD MESSAGES');
+
+    await page.reload();
+    await signIn();
+    await openArchive();
+    await expect(screen).toContainText(`FILING RESULT: ${result}.`);
+    await act('COMPARISON DESK', 'Return to comparison desk');
+    await act('VESTIBULE', 'Return to vestibule');
+    await expect(button(notebook)).toBeVisible();
+    await act('NOTEBOOK', 'Read notebook');
+    await expect(screen).toContainText(`TRAINING NOTEBOOK: ${order}.`);
+    await act('EXIT', 'EXIT');
+    await expect(system).toContainText('DEEP FIELD MAIN MENU');
+  });
+}
+
 for (const input of ['keyboard', 'pointer'] as const) {
   test(`SECOND LINE denies and grants access through ${input} controls`, async ({ page }) => {
     const beforeRelay = JSON.parse(completedV1) as { puzzles: string[]; flags: string[] };

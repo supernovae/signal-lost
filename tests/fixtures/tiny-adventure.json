@@ -1,0 +1,43 @@
+{
+  "kind": "adventure",
+  "id": "tiny-adventure",
+  "name": "BENCH LOG",
+  "description": "A fixture adventure with one piece of evidence.",
+  "attribution": { "author": "Test" },
+  "version": 1,
+  "requires": "completed:episode.000",
+  "rewards": ["flag:bench-log-filed"],
+  "returnTo": "bbs-menu",
+  "startLocationId": "landing",
+  "locations": [
+    {
+      "id": "landing",
+      "title": "LANDING",
+      "description": ["Steps lead down to a workbench."],
+      "actions": [
+        { "kind": "move", "command": "DOWN", "label": "Go down", "toLocationId": "bench" }
+      ]
+    },
+    {
+      "id": "bench",
+      "title": "BENCH",
+      "description": ["A log sits beside a switch."],
+      "actions": [
+        { "kind": "inspect", "command": "READ LOG", "label": "Read log", "itemId": "log" },
+        {
+          "kind": "end",
+          "command": "FILE LOG",
+          "label": "File log",
+          "when": "read:log",
+          "endingId": "filed"
+        },
+        { "kind": "move", "command": "UP", "label": "Go up", "toLocationId": "landing" }
+      ]
+    }
+  ],
+  "items": [{ "id": "log", "text": ["Bench log: switch tested."] }],
+  "flags": [],
+  "endings": [{ "id": "filed", "text": ["The bench log is filed."] }],
+  "orderPuzzles": [],
+  "rewardRules": [{ "reward": "flag:bench-log-filed", "when": "completed:filed" }]
+}

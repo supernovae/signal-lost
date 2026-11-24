@@ -80,14 +80,17 @@ export function createDoorHost(
       } else {
         result = copyScreen(door.input(command, progress));
       }
-      const { payload, complete } = door.checkpoint(progress);
+      const { payload, complete, earnedRewards } = door.checkpoint(progress);
       const slot = slotSchema.parse({ version: registration.version, payload });
       const next: SaveData = {
         ...data,
         doorState: { ...data.doorState, [registration.id]: slot },
       };
-      const rewards =
-        complete === true ? registration.rewards.filter((f) => !progress.hasFact(f)) : [];
+      const declared = new Set(registration.rewards);
+      const candidates = earnedRewards ?? (complete === true ? declared : []);
+      const rewards = [...new Set(candidates)].filter(
+        (fact) => declared.has(fact) && !progress.hasFact(fact),
+      );
       if (rewards.length) {
         // Stage rewards on separate arrays until the slot and facts have been written together.
         next.puzzles = [...data.puzzles];

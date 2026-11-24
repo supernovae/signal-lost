@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  ADVENTURE_STATE_LIMIT,
+  normalizeAdventureCommand,
+  reachableAdventureStates,
+} from '../doors/adventure.ts';
 import { CODE_DOORS } from '../doors/code-doors.ts';
 import type { CodeDoorRegistration } from '../doors/contract.ts';
 import { createScriptedDialogue } from '../narrative/dialogue.ts';
@@ -20,6 +25,7 @@ import {
   capabilitySchema,
   characterSchema,
   communitySchema,
+  declarativeDoorSchema,
   doorMetadataSchema,
   episodeSchema,
   eventSchema,
@@ -27,7 +33,7 @@ import {
   screenSchema,
   sectorSchema,
   transmissionSchema,
-  triviaDoorSchema,
+  type AdventureDoor,
   type Capability,
   type Content,
   type BbsRecord,
@@ -64,7 +70,7 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   archives: archiveSchema,
   bbs: bbsSchema,
   events: eventSchema,
-  doors: triviaDoorSchema,
+  doors: declarativeDoorSchema,
   characters: characterSchema,
   sectors: sectorSchema,
   artifacts: artifactSchema,
@@ -451,6 +457,146 @@ function checkCapabilityEffect(
   }
 }
 
+function checkAdventureReferences(
+  door: AdventureDoor,
+  report: (field: string, message: string) => void,
+): void {
+  let invalid = false;
+  const fail = (field: string, message: string) => {
+    invalid = true;
+    report(field, message);
+  };
+  function unique<T>(entries: readonly T[], field: string, key: (entry: T) => string, suffix = '') {
+    const seen = new Set<string>();
+    entries.forEach((entry, i) => {
+      const value = key(entry);
+      if (seen.has(value)) fail(`${field}.${i}${suffix}`, `duplicate "${value}"`);
+      seen.add(value);
+    });
+    return seen;
+  }
+  const checkId = (ids: ReadonlySet<string>, id: string, field: string, kind: string) => {
+    if (!ids.has(id)) fail(field, `unknown ${kind} "${id}"`);
+  };
+  const byId = ({ id }: { id: string }) => id;
+  const locations = unique(door.locations, 'locations', byId, '.id');
+  const items = unique(door.items, 'items', byId, '.id');
+  const flags = unique(door.flags, 'flags', (flag) => flag);
+  const endings = unique(door.endings, 'endings', byId, '.id');
+  unique(door.orderPuzzles, 'orderPuzzles', byId, '.id');
+  const localAtoms = new Set([
+    ...Array.from(items, (id) => `read:${id}`),
+    ...Array.from(flags, (id) => `flag:${id}`),
+    ...Array.from(endings, (id) => `completed:${id}`),
+  ]);
+
+  function checkLocalCondition(condition: Condition | undefined, field: string): void {
+    if (condition === undefined) return;
+    if (typeof condition === 'string') checkId(localAtoms, condition, field, 'local fact');
+    else if ('not' in condition) checkLocalCondition(condition.not, `${field}.not`);
+    else if ('all' in condition) {
+      condition.all.forEach((child, i) => checkLocalCondition(child, `${field}.all.${i}`));
+    } else {
+      condition.any.forEach((child, i) => checkLocalCondition(child, `${field}.any.${i}`));
+    }
+  }
+
+  checkId(locations, door.startLocationId, 'startLocationId', 'location');
+  const operationsByPuzzle = new Map<string, Set<string>>();
+  door.orderPuzzles.forEach((puzzle, i) => {
+    const field = `orderPuzzles.${i}`;
+    checkId(flags, puzzle.successFlag, `${field}.successFlag`, 'flag');
+    puzzle.requiredItemIds.forEach((id, j) =>
+      checkId(items, id, `${field}.requiredItemIds.${j}`, 'item'),
+    );
+    operationsByPuzzle.set(
+      puzzle.id,
+      unique(puzzle.operations, `${field}.operations`, byId, '.id'),
+    );
+    puzzle.operations.forEach((operation, j) => {
+      operation.inputs.forEach(({ token }, k) => {
+        if (
+          !puzzle.operations.some((entry) => entry !== operation && entry.outputs.includes(token))
+        ) {
+          fail(
+            `${field}.operations.${j}.inputs.${k}.token`,
+            `no other operation produces "${token}"`,
+          );
+        }
+      });
+    });
+  });
+
+  door.locations.forEach(({ actions }, i) => {
+    const field = `locations.${i}.actions`;
+    unique(actions, field, ({ command }) => normalizeAdventureCommand(command), '.command');
+    actions.forEach((action, j) => {
+      const path = `${field}.${j}`;
+      if (normalizeAdventureCommand(action.command) === 'EXIT')
+        fail(`${path}.command`, 'EXIT is reserved by the door host');
+      checkLocalCondition(action.when, `${path}.when`);
+      switch (action.kind) {
+        case 'move':
+          checkId(locations, action.toLocationId, `${path}.toLocationId`, 'location');
+          break;
+        case 'inspect':
+          checkId(items, action.itemId, `${path}.itemId`, 'item');
+          break;
+        case 'talk':
+          if (action.variants.at(-1)?.when !== undefined) {
+            fail(
+              `${path}.variants.${action.variants.length - 1}.when`,
+              'last dialogue variant must be unconditional',
+            );
+          }
+          action.variants.forEach(({ when }, k) =>
+            checkLocalCondition(when, `${path}.variants.${k}.when`),
+          );
+          break;
+        case 'order': {
+          const operations = operationsByPuzzle.get(action.puzzleId);
+          if (!operations) {
+            fail(`${path}.puzzleId`, `unknown order puzzle "${action.puzzleId}"`);
+            break;
+          }
+          const submitted = unique(action.operationIds, `${path}.operationIds`, (id) => id);
+          action.operationIds.forEach((id, k) =>
+            checkId(operations, id, `${path}.operationIds.${k}`, 'operation'),
+          );
+          for (const id of operations) {
+            if (!submitted.has(id)) fail(`${path}.operationIds`, `missing operation "${id}"`);
+          }
+          break;
+        }
+        case 'end':
+          checkId(endings, action.endingId, `${path}.endingId`, 'ending');
+          break;
+      }
+    });
+  });
+
+  const declared = new Set(door.rewards);
+  const ruled = new Set(door.rewardRules.map(({ reward }) => reward));
+  door.rewardRules.forEach(({ reward, when }, i) => {
+    checkId(declared, reward, `rewardRules.${i}.reward`, 'declared reward');
+    checkLocalCondition(when, `rewardRules.${i}.when`);
+  });
+  door.rewards.forEach((reward, i) => {
+    if (!ruled.has(reward)) fail(`rewards.${i}`, `no reward rule for "${reward}"`);
+  });
+
+  if (invalid) return;
+  const states = reachableAdventureStates(door);
+  if (!states) {
+    report('locations', `adventure exceeds ${ADVENTURE_STATE_LIMIT} reachable states`);
+    return;
+  }
+  const visited = new Set(states.map(({ locationId }) => locationId));
+  door.locations.forEach(({ id }, i) => {
+    if (!visited.has(id)) report(`locations.${i}.id`, `unreachable location "${id}"`);
+  });
+}
+
 function checkReferences(
   content: Content,
   doors: readonly DoorMetadata[],
@@ -563,6 +709,13 @@ function checkReferences(
   for (const door of doors) {
     checkCondition(door.requires, door, 'requires');
     door.rewards.forEach((g, i) => checkFact(g, door, `rewards.${i}`, true));
+  }
+  for (const door of content.doors) {
+    if (door.kind === 'adventure') {
+      checkAdventureReferences(door, (field, message) => {
+        errors.push({ file: sources.get(door)!.file, field, message });
+      });
+    }
   }
   for (const record of [...content.transmissions, ...content.archives, ...content.artifacts]) {
     checkCondition(record.requires, record, 'requires');

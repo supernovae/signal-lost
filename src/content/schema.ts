@@ -435,6 +435,72 @@ export const triviaDoorSchema = doorMetadataSchema.extend({
   success: text.min(1),
 });
 
+const adventureActionFields = {
+  command: z.string().trim().min(1),
+  label: z.string().min(1),
+  when: condition.optional(),
+};
+
+const adventureAction = z.discriminatedUnion('kind', [
+  z.strictObject({ ...adventureActionFields, kind: z.literal('move'), toLocationId: id }),
+  z.strictObject({ ...adventureActionFields, kind: z.literal('inspect'), itemId: id }),
+  z.strictObject({
+    ...adventureActionFields,
+    kind: z.literal('talk'),
+    variants: z.array(z.strictObject({ when: condition.optional(), text: text.min(1) })).min(1),
+  }),
+  z.strictObject({ ...adventureActionFields, kind: z.literal('show'), text: text.min(1) }),
+  z.strictObject({
+    ...adventureActionFields,
+    kind: z.literal('order'),
+    puzzleId: id,
+    operationIds: z.array(id).min(1),
+  }),
+  z.strictObject({ ...adventureActionFields, kind: z.literal('end'), endingId: id }),
+]);
+
+const orderPuzzle = z.strictObject({
+  id,
+  requiredItemIds: z.array(id),
+  operations: z
+    .array(
+      z.strictObject({
+        id,
+        inputs: z.array(z.strictObject({ token: id, missing: text.min(1) })),
+        outputs: z.array(id),
+      }),
+    )
+    .min(1),
+  successFlag: id,
+  inspectFirst: text.min(1),
+  success: text.min(1),
+});
+
+export const adventureDoorSchema = doorMetadataSchema.extend({
+  kind: z.literal('adventure'),
+  startLocationId: id,
+  locations: z
+    .array(
+      z.strictObject({
+        id,
+        title: z.string().min(1),
+        description: text.min(1),
+        actions: z.array(adventureAction),
+      }),
+    )
+    .min(1),
+  items: z.array(z.strictObject({ id, text: text.min(1) })),
+  flags: z.array(id),
+  endings: z.array(z.strictObject({ id, text: text.min(1) })).min(1),
+  orderPuzzles: z.array(orderPuzzle),
+  rewardRules: z.array(z.strictObject({ reward: fact, when: condition })),
+});
+
+export const declarativeDoorSchema = z.discriminatedUnion('kind', [
+  triviaDoorSchema,
+  adventureDoorSchema,
+]);
+
 export const characterSchema = z.strictObject({
   ...record,
   name: z.string(),
@@ -504,6 +570,8 @@ export type BbsThread = z.infer<typeof bbsThreadSchema>;
 export type BbsTone = (typeof bbsTones)[number];
 export type DoorMetadata = z.infer<typeof doorMetadataSchema>;
 export type TriviaDoor = z.infer<typeof triviaDoorSchema>;
+export type AdventureDoor = z.infer<typeof adventureDoorSchema>;
+export type DeclarativeDoor = z.infer<typeof declarativeDoorSchema>;
 export type Character = z.infer<typeof characterSchema>;
 export type DialogueLine = Character['lines'][number];
 export type Sector = z.infer<typeof sectorSchema>;
@@ -520,7 +588,7 @@ export interface Content {
   archives: Archive[];
   bbs: BbsRecord[];
   events: NetworkEvent[];
-  doors: TriviaDoor[];
+  doors: DeclarativeDoor[];
   characters: Character[];
   sectors: Sector[];
   artifacts: Artifact[];

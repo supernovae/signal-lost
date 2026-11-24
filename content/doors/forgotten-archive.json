@@ -1,0 +1,337 @@
+{
+  "kind": "adventure",
+  "id": "forgotten-archive",
+  "name": "THE FORGOTTEN ARCHIVE",
+  "description": "Door C. A local training shelf and the retained records of its custodians.",
+  "attribution": {
+    "author": "SIGNAL//LOST contributors"
+  },
+  "version": 1,
+  "requires": "flag:deferred-verified",
+  "returnTo": "bbs-menu",
+  "rewards": [
+    "flag:spool-02-order-learned",
+    "flag:forgotten-archive-indexed",
+    "flag:forgotten-archive-restricted"
+  ],
+  "startLocationId": "vestibule",
+  "locations": [
+    {
+      "id": "vestibule",
+      "title": "ARCHIVE VESTIBULE",
+      "description": [
+        "A training shelf stands beside the entrance. The comparison desk keeps a separate index of training copies."
+      ],
+      "actions": [
+        {
+          "kind": "move",
+          "command": "TRAINING SHELF",
+          "label": "Visit training shelf",
+          "toLocationId": "training-shelf"
+        },
+        {
+          "kind": "move",
+          "command": "COMPARISON DESK",
+          "label": "Visit comparison desk",
+          "toLocationId": "comparison-desk"
+        },
+        {
+          "kind": "show",
+          "command": "NOTEBOOK",
+          "label": "Read notebook",
+          "when": "flag:order-learned",
+          "text": [
+            "TRAINING NOTEBOOK: SEAL / ROUTE / ACK.",
+            "Seal the original and retain the seal reference. Route using that reference and retain the destination receipt. Acknowledge using that receipt."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "training-shelf",
+      "title": "TRAINING SHELF",
+      "description": [
+        "POSTED RULE: An operation may only consume outputs already produced.",
+        "Inspect the three fragments, then submit one complete order."
+      ],
+      "actions": [
+        {
+          "kind": "inspect",
+          "command": "INSPECT SEAL FRAGMENT",
+          "label": "Inspect SEAL fragment",
+          "itemId": "seal-fragment"
+        },
+        {
+          "kind": "inspect",
+          "command": "INSPECT ROUTE FRAGMENT",
+          "label": "Inspect ROUTE fragment",
+          "itemId": "route-fragment"
+        },
+        {
+          "kind": "inspect",
+          "command": "INSPECT ACK FRAGMENT",
+          "label": "Inspect ACK fragment",
+          "itemId": "ack-fragment"
+        },
+        {
+          "kind": "order",
+          "command": "ROUTE / ACK / SEAL",
+          "label": "Submit order",
+          "puzzleId": "shelf-order",
+          "operationIds": ["route", "ack", "seal"]
+        },
+        {
+          "kind": "order",
+          "command": "ROUTE / SEAL / ACK",
+          "label": "Submit order",
+          "puzzleId": "shelf-order",
+          "operationIds": ["route", "seal", "ack"]
+        },
+        {
+          "kind": "order",
+          "command": "ACK / ROUTE / SEAL",
+          "label": "Submit order",
+          "puzzleId": "shelf-order",
+          "operationIds": ["ack", "route", "seal"]
+        },
+        {
+          "kind": "order",
+          "command": "ACK / SEAL / ROUTE",
+          "label": "Submit order",
+          "puzzleId": "shelf-order",
+          "operationIds": ["ack", "seal", "route"]
+        },
+        {
+          "kind": "order",
+          "command": "SEAL / ROUTE / ACK",
+          "label": "Submit order",
+          "puzzleId": "shelf-order",
+          "operationIds": ["seal", "route", "ack"]
+        },
+        {
+          "kind": "order",
+          "command": "SEAL / ACK / ROUTE",
+          "label": "Submit order",
+          "puzzleId": "shelf-order",
+          "operationIds": ["seal", "ack", "route"]
+        },
+        {
+          "kind": "show",
+          "command": "NOTEBOOK",
+          "label": "Read notebook",
+          "when": "flag:order-learned",
+          "text": [
+            "TRAINING NOTEBOOK: SEAL / ROUTE / ACK.",
+            "Seal the original and retain the seal reference. Route using that reference and retain the destination receipt. Acknowledge using that receipt."
+          ]
+        },
+        {
+          "kind": "move",
+          "command": "VESTIBULE",
+          "label": "Return to vestibule",
+          "toLocationId": "vestibule"
+        }
+      ]
+    },
+    {
+      "id": "comparison-desk",
+      "title": "COMPARISON DESK",
+      "description": [
+        "A training copy lies beside its scope card. The GHOST reconstruction indexes retained bench notes."
+      ],
+      "actions": [
+        {
+          "kind": "inspect",
+          "command": "INSPECT COPY SCOPE",
+          "label": "Inspect copy scope",
+          "itemId": "copy-scope"
+        },
+        {
+          "kind": "talk",
+          "command": "TALK GHOST",
+          "label": "Open GHOST reconstruction",
+          "variants": [
+            {
+              "when": "read:copy-scope",
+              "text": [
+                "GHOST // RETAINED BENCH NOTE: A label keeps a training copy from passing for the sealed record."
+              ]
+            },
+            {
+              "text": [
+                "GHOST // RETAINED INDEX NOTE: Training copies carry a scope card. The original stays sealed."
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "move",
+          "command": "PRESERVATION VAULT",
+          "label": "Visit preservation vault",
+          "toLocationId": "preservation-vault"
+        },
+        {
+          "kind": "move",
+          "command": "VESTIBULE",
+          "label": "Return to vestibule",
+          "toLocationId": "vestibule"
+        }
+      ]
+    },
+    {
+      "id": "preservation-vault",
+      "title": "PRESERVATION VAULT",
+      "description": [
+        "The filing register controls what local readers can find in the index. The sealed originals stay in custody.",
+        "Read the copy scope and custody policy to expose the filing options."
+      ],
+      "actions": [
+        {
+          "kind": "inspect",
+          "command": "INSPECT CUSTODY POLICY",
+          "label": "Inspect custody policy",
+          "itemId": "custody-policy"
+        },
+        {
+          "kind": "talk",
+          "command": "TALK PACKET",
+          "label": "Open PACKET reconstruction",
+          "variants": [
+            {
+              "when": "read:custody-policy",
+              "text": [
+                "PACKET // RETAINED CUSTODY NOTE: A reference is enough to verify custody. A labeled training copy gives the next shift something to compare."
+              ]
+            },
+            {
+              "text": [
+                "PACKET // RETAINED INDEX NOTE: Check the custody policy before filing a copy."
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "end",
+          "command": "INDEX COPY",
+          "label": "Index the labeled training copy",
+          "endingId": "indexed",
+          "when": {
+            "all": ["read:copy-scope", "read:custody-policy"]
+          }
+        },
+        {
+          "kind": "end",
+          "command": "SEALED REFERENCES",
+          "label": "Restrict to sealed references",
+          "endingId": "restricted",
+          "when": {
+            "all": ["read:copy-scope", "read:custody-policy"]
+          }
+        },
+        {
+          "kind": "move",
+          "command": "COMPARISON DESK",
+          "label": "Return to comparison desk",
+          "toLocationId": "comparison-desk"
+        }
+      ]
+    }
+  ],
+  "items": [
+    {
+      "id": "seal-fragment",
+      "text": [
+        "SEAL FRAGMENT // GHOST, RETAINED: SEAL fixes an immutable original and issues a seal reference."
+      ]
+    },
+    {
+      "id": "route-fragment",
+      "text": [
+        "ROUTE FRAGMENT: ROUTE requires the seal reference and issues a destination receipt."
+      ]
+    },
+    {
+      "id": "ack-fragment",
+      "text": [
+        "ACK FRAGMENT // PACKET, RETAINED: ACK requires the destination receipt and records delivery."
+      ]
+    },
+    {
+      "id": "copy-scope",
+      "text": [
+        "COPY SCOPE: A labeled training copy is cleared for local comparison. Its label links back to the sealed original."
+      ]
+    },
+    {
+      "id": "custody-policy",
+      "text": [
+        "CUSTODY POLICY: Index a labeled training copy for local review, or list sealed references only. Keep the originals sealed in either case."
+      ]
+    }
+  ],
+  "flags": ["order-learned"],
+  "endings": [
+    {
+      "id": "indexed",
+      "text": [
+        "FILING RESULT: LABELED COPY INDEXED. Local readers can compare the training copy. The originals remain sealed."
+      ]
+    },
+    {
+      "id": "restricted",
+      "text": [
+        "FILING RESULT: SEALED REFERENCES ONLY. Local readers can verify custody by reference. The originals remain sealed."
+      ]
+    }
+  ],
+  "orderPuzzles": [
+    {
+      "id": "shelf-order",
+      "requiredItemIds": ["seal-fragment", "route-fragment", "ack-fragment"],
+      "operations": [
+        {
+          "id": "seal",
+          "inputs": [],
+          "outputs": ["seal-reference"]
+        },
+        {
+          "id": "route",
+          "inputs": [
+            {
+              "token": "seal-reference",
+              "missing": ["ROUTE is missing the seal reference."]
+            }
+          ],
+          "outputs": ["destination-receipt"]
+        },
+        {
+          "id": "ack",
+          "inputs": [
+            {
+              "token": "destination-receipt",
+              "missing": ["ACK is missing the destination receipt."]
+            }
+          ],
+          "outputs": []
+        }
+      ],
+      "successFlag": "order-learned",
+      "inspectFirst": ["Inspect all three training fragments before recording the procedure."],
+      "success": ["PROCEDURE LEARNED. The training notebook is available."]
+    }
+  ],
+  "rewardRules": [
+    {
+      "reward": "flag:spool-02-order-learned",
+      "when": "flag:order-learned"
+    },
+    {
+      "reward": "flag:forgotten-archive-indexed",
+      "when": "completed:indexed"
+    },
+    {
+      "reward": "flag:forgotten-archive-restricted",
+      "when": "completed:restricted"
+    }
+  ]
+}
