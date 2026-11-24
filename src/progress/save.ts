@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { bbsProgressSchema } from '../bbs/progress.ts';
+import { bbsThemeIds } from '../bbs/themes.ts';
 
 export const SAVE_SCHEMA_VERSION = 2;
 const SAVE_KEY = 'signal-lost.save';
@@ -7,6 +9,7 @@ const preferencesSchema = z.object({
   muted: z.boolean(),
   reducedMotion: z.boolean().nullable(),
   effects: z.boolean(),
+  bbsTheme: z.enum(bbsThemeIds).catch('amber').default('amber'),
 });
 
 const globalSchema = z.object({
@@ -33,6 +36,7 @@ export function normalizeHandle(handle: string | null): string | null {
 
 const saveSchema = globalSchema.extend({
   schemaVersion: z.literal(SAVE_SCHEMA_VERSION),
+  bbs: bbsProgressSchema,
   bbsReadMessages: z
     .array(z.string())
     .catch([])
@@ -65,6 +69,7 @@ export const DEFAULT_PREFERENCES: SaveData['preferences'] = {
   // null follows the browser's prefers-reduced-motion setting.
   reducedMotion: null,
   effects: true,
+  bbsTheme: 'amber',
 };
 
 function createSaveSeed(): number {
@@ -83,6 +88,7 @@ export function freshSave(seed = createSaveSeed()): SaveData {
     seenLines: [],
     failures: {},
     preferences: { ...DEFAULT_PREFERENCES },
+    bbs: bbsProgressSchema.parse(undefined),
     bbsReadMessages: [],
     profile: { handle: null, designation: null, accessLevel: null, seed },
     doorState: {},
@@ -164,6 +170,7 @@ export function loadSave(
         const data: SaveData = {
           ...global,
           schemaVersion: SAVE_SCHEMA_VERSION,
+          bbs: bbsProgressSchema.parse(undefined),
           bbsReadMessages: [],
           profile: { handle: null, designation, accessLevel: null, seed: seed() },
           doorState: {},

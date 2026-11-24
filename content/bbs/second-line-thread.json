@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "second-line-thread",
+  "board": "second-line",
+  "title": "A note from the second line",
+  "order": 0,
+  "messages": [
+    {
+      "kind": "archive",
+      "id": "community.second-line"
+    }
+  ]
+}

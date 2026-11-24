@@ -23,6 +23,7 @@
   "archives": [
     {
       "id": "community.second-line",
+      "origin": "reviewed-community",
       "board": "SECOND-LINE",
       "title": "IS ANYONE ELSE ON THIS LINE",
       "from": "UNLISTED",

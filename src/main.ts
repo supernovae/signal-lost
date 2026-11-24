@@ -7,6 +7,8 @@ import { buildTools } from './app/tools.ts';
 import { getBbsOffer } from './bbs/bbs.ts';
 import { createBbsScene } from './bbs/bbs-view.ts';
 import { createBbsDoorSession } from './bbs/door-session.ts';
+import { applyBbsEffect } from './bbs/progress.ts';
+import { bbsThemeStyles } from './bbs/themes.ts';
 import { loadBundledContent } from './content/browser.ts';
 import type { Episode } from './content/schema.ts';
 import { createDoorHost } from './doors/host.ts';
@@ -16,6 +18,7 @@ import { createScriptedDialogue } from './narrative/dialogue.ts';
 import { openSaveSession } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
 import { createRenderHost } from './render/host.ts';
+import type { Terminal } from './terminal/terminal.ts';
 import './style.css';
 
 const root = document.querySelector<HTMLElement>('#app')!;
@@ -40,6 +43,12 @@ const applySettings = (): void => {
   applyPreferences(data.preferences, systemReduced, {
     setMuted: (muted) => audio.setMuted(muted),
     setMotion: (enabled) => renderHost.environment?.setMotion(enabled),
+    setBbsTheme(theme) {
+      document.body.dataset['bbsTheme'] = theme;
+      for (const [name, value] of Object.entries(bbsThemeStyles(theme))) {
+        document.body.style.setProperty(name, value);
+      }
+    },
     setAttribute(name, value) {
       document.body.dataset[name] = value;
     },
@@ -61,6 +70,26 @@ const renderHost = createRenderHost(
 window.addEventListener('pagehide', () => renderHost.dispose());
 applySettings();
 
+function showSettings(terminal: Terminal): void {
+  const close = () => {
+    terminal.closePanel();
+    terminal.focus();
+  };
+  openSettings(terminal.openPanel(), {
+    preferences: data.preferences,
+    systemReduced,
+    onChange() {
+      session.persist();
+      applySettings();
+    },
+    onReset() {
+      if (session.clear()) window.location.reload();
+      else close();
+    },
+    onClose: close,
+  });
+}
+
 const utilities: Tool[] = [
   {
     id: 'status',
@@ -77,25 +106,7 @@ const utilities: Tool[] = [
   {
     id: 'settings',
     label: 'SETTINGS',
-    run(terminal) {
-      openSettings(terminal.openPanel(), {
-        preferences: data.preferences,
-        systemReduced,
-        onChange() {
-          session.persist();
-          applySettings();
-        },
-        onReset() {
-          if (session.clear()) {
-            window.location.reload();
-          } else {
-            terminal.closePanel();
-            terminal.focus();
-          }
-        },
-        onClose: () => terminal.closePanel(),
-      });
-    },
+    run: showSettings,
   },
   {
     id: 'help',
@@ -123,18 +134,18 @@ const showHub = (): void => {
           id: 'connect',
           label: 'CONNECT',
           run() {
-            const identity = { ...data.profile, readMessages: data.bbsReadMessages };
+            const snapshot = () => data;
             const host = createDoorHost(doors, data, session.persist);
             scenes.show(
               createBbsScene(
                 root,
-                createBbsDoorSession(offer, identity, host),
-                identity,
+                createBbsDoorSession(offer, snapshot, host),
+                snapshot,
                 (effect) => {
-                  if ('handle' in effect) data.profile.handle = effect.handle;
-                  else data.bbsReadMessages.push(effect.readKey);
-                  session.persist();
+                  applyBbsEffect(data, effect);
+                  return session.persist();
                 },
+                showSettings,
                 showHub,
               ),
             );

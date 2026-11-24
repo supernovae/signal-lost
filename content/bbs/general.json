@@ -1,0 +1,7 @@
+{
+  "kind": "message-board",
+  "id": "general",
+  "bbs": "deep-field",
+  "title": "GENERAL",
+  "description": ["Notes kept by the local preservation routine."]
+}

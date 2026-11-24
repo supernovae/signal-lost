@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
+import { applyBbsEffect } from '../../src/bbs/progress.ts';
+import { bbsThemeIds } from '../../src/bbs/themes.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import { loadContent } from '../../src/content/validate.ts';
 import {
@@ -42,7 +44,7 @@ describe('save data', () => {
     const storage = memoryStorage();
     const data = freshSave(0);
     addFact(data, 'solved:p');
-    data.preferences = { muted: true, reducedMotion: true, effects: false };
+    data.preferences = { muted: true, reducedMotion: true, effects: false, bbsTheme: 'ansi' };
     const handle = 'a'.repeat(31) + '🚀';
     data.profile = {
       handle: `  ${handle}z  `,
@@ -113,6 +115,8 @@ describe('save data', () => {
     expect(status).toBe('migrated');
     expect(data).toEqual({
       ...global,
+      preferences: { ...global.preferences, bbsTheme: 'amber' },
+      bbs: { replies: {}, discoveries: [], history: [] },
       schemaVersion: 2,
       bbsReadMessages: [],
       profile: { handle: null, designation, accessLevel: null, seed: 123 },
@@ -142,13 +146,19 @@ describe('save data', () => {
   });
 
   it('offers DEEP FIELD to a pre-feature v2 save without FORGE progress', () => {
-    const { bbsReadMessages, ...data } = freshSave(42);
-    expect(bbsReadMessages).toEqual([]);
+    const data = freshSave(42);
     data.episodes.push('episode.000');
     data.profile.designation = 'OBS-02FF';
-    const session = openSaveSession(memoryStorage(JSON.stringify(data)));
+    const old: Record<string, unknown> = {
+      ...data,
+      preferences: { muted: false, reducedMotion: null, effects: true },
+    };
+    delete old['bbsReadMessages'];
+    delete old['bbs'];
+    const session = openSaveSession(memoryStorage(JSON.stringify(old)));
     expect(session.status).toBe('loaded');
-    expect(session.data).toEqual({ ...data, bbsReadMessages: [] });
+    expect(session.data).toEqual(data);
+    expect(session.data.bbs.history).toEqual([]);
     expect(getBbsOffer(content, factsOf(session.data))?.board.id).toBe('deep-field');
   });
 
@@ -179,6 +189,55 @@ describe('save data', () => {
         data: { ...reopened.data, bbsReadMessages: [] },
       });
     }
+  });
+
+  it('keeps the newest 100 actions and recovers valid local state beside malformed fields', () => {
+    const storage = memoryStorage();
+    const { data, persist } = openSaveSession(storage, seed);
+    data.archives.push('manual.rev-c');
+    data.doorState['kept'] = true;
+    for (let i = 0; i < 104; i++) {
+      applyBbsEffect(data, { history: { kind: 'thread', id: `thread-${i}` } });
+    }
+    expect(data.bbs.history).toHaveLength(100);
+    expect(data.bbs.history[0]).toEqual({ kind: 'thread', id: 'thread-4' });
+    expect(data.bbs.history.at(-1)).toEqual({ kind: 'thread', id: 'thread-103' });
+    expect(persist()).toBe(true);
+    expect(openSaveSession(storage).data.bbs).toEqual(data.bbs);
+
+    const malformed = {
+      ...JSON.parse(storage.value!),
+      bbs: {
+        replies: { 'relay-thread': null, 'earlier-thread': 'earlier-choice' },
+        discoveries: ['linecheck', 7, 'linecheck'],
+        history: [{ kind: 'bogus' }, { kind: 'sign-in', handle: 'ignore me', visitors: 100 }],
+      },
+    };
+    expect(openSaveSession(memoryStorage(JSON.stringify(malformed))).data).toEqual({
+      ...data,
+      bbs: {
+        replies: { 'earlier-thread': 'earlier-choice' },
+        discoveries: ['linecheck'],
+        history: [{ kind: 'sign-in' }],
+      },
+    });
+    expect(openSaveSession(memoryStorage(JSON.stringify({ ...malformed, bbs: [] }))).data).toEqual({
+      ...data,
+      bbs: { replies: {}, discoveries: [], history: [] },
+    });
+  });
+
+  it.each(bbsThemeIds)('round-trips %s alongside motion and effects', (bbsTheme) => {
+    const storage = memoryStorage();
+    const { data, persist } = openSaveSession(storage, seed);
+    data.preferences = { bbsTheme, reducedMotion: false, effects: false, muted: true };
+    expect(persist()).toBe(true);
+    expect(openSaveSession(storage).data.preferences).toEqual(data.preferences);
+    const invalid = { ...data, preferences: { ...data.preferences, bbsTheme: 'missing' } };
+    expect(openSaveSession(memoryStorage(JSON.stringify(invalid))).data.preferences).toEqual({
+      ...data.preferences,
+      bbsTheme: 'amber',
+    });
   });
 
   it('migrates version 0 progress and designation with default preferences', () => {

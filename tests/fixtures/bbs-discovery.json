@@ -1,0 +1,27 @@
+{
+  "content/bbs/fixture-clue.json": {
+    "kind": "message",
+    "id": "fixture-clue",
+    "board": "general",
+    "title": "Fixture clue",
+    "from": "FINCH",
+    "date": "2001-03-02",
+    "body": ["Type TUNECHECK to read the optional fixture."]
+  },
+  "content/bbs/fixture-thread.json": {
+    "kind": "thread",
+    "id": "fixture-thread",
+    "board": "general",
+    "title": "Fixture thread",
+    "order": 2,
+    "messages": [{ "kind": "message", "id": "fixture-clue" }]
+  },
+  "content/bbs/fixture-secret.json": {
+    "kind": "secret",
+    "id": "fixture-secret",
+    "bbs": "deep-field",
+    "command": "TUNECHECK",
+    "clueMessageId": "fixture-clue",
+    "output": ["FIXTURE TUNING CONFIRMED."]
+  }
+}

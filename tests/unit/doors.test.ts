@@ -64,17 +64,13 @@ function openBoard(
   const { data, persist } = openSaveSession(storage, () => 42);
   const registry = createDoorRegistry(content.doors, codeDoors);
   const host = createDoorHost(registry, data, persist);
-  const bbs = createBbsDoorSession(
-    offer,
-    { ...data.profile, readMessages: data.bbsReadMessages },
-    host,
-  );
+  const bbs = createBbsDoorSession(offer, () => data, host);
   return { data, host, bbs };
 }
 
 async function signIn(bbs: ReturnType<typeof createBbsDoorSession>) {
   await bbs.dispatch('CONNECT');
-  return (await bbs.dispatch('DESIGNATION'))!.output.lines;
+  return (await bbs.dispatch('DESIGNATION'))!.output.flatMap(({ lines }) => lines);
 }
 
 function metadata(id: string): DoorMetadata {
@@ -267,11 +263,17 @@ describe('BBS door recovery', () => {
           ? opened
           : (await bbs.dispatch(method === 'exit' ? 'EXIT' : '+'))!;
       expect(fail).toHaveBeenCalledOnce();
-      expect(result.output.lines).toContain(offer.board.doorError);
-      expect(result.output.lines).toContain('DEEP FIELD MAIN MENU');
+      expect(result.output[0]?.tone).toBe('network-error');
+      expect(result.effect).toBeUndefined();
+      expect(result.output.flatMap(({ lines }) => lines)).toContain(offer.board.doorError);
+      expect(result.output.flatMap(({ lines }) => lines)).toContain('DEEP FIELD MAIN MENU');
       expect(bbs.screen().phase).toBe('menu');
-      expect((await bbs.dispatch('MESSAGES'))!.output.lines).toContain('DEEP FIELD MESSAGES');
-      expect((await bbs.dispatch('HELP'))!.output.lines).toContain(bbs.screen().hint);
+      expect((await bbs.dispatch('MESSAGES'))!.output.flatMap(({ lines }) => lines)).toContain(
+        'DEEP FIELD MESSAGES',
+      );
+      expect((await bbs.dispatch('HELP'))!.output.flatMap(({ lines }) => lines)).toContain(
+        bbs.screen().hint,
+      );
       expect(storage.value).toBe(previous);
       expect(live).toEqual(data);
     },
@@ -290,7 +292,9 @@ describe('BBS door recovery', () => {
     storage.setItem.mockImplementationOnce(() => {
       throw new Error('storage refused write');
     });
-    expect((await bbs.dispatch('+'))!.output.lines).toContain(offer.board.doorError);
+    expect((await bbs.dispatch('+'))!.output.flatMap(({ lines }) => lines)).toContain(
+      offer.board.doorError,
+    );
     expect(bbs.screen().phase).toBe('menu');
     expect(storage.setItem).toHaveBeenCalledOnce();
     const proposed = JSON.parse(storage.setItem.mock.calls[0]![1]);
@@ -313,7 +317,9 @@ describe('BBS door recovery', () => {
     const { bbs } = openBoard(storage);
     await signIn(bbs);
     await bbs.dispatch('DOORS');
-    expect((await bbs.dispatch(`OPEN ${relay.id}`))!.output.lines).toContain(firstPrompt);
+    expect(
+      (await bbs.dispatch(`OPEN ${relay.id}`))!.output.flatMap(({ lines }) => lines),
+    ).toContain(firstPrompt);
     expect(storage.value).toBe(JSON.stringify(stored));
     await bbs.dispatch(answer(0));
     await bbs.dispatch('EXIT');
@@ -333,17 +339,23 @@ describe('BBS door recovery', () => {
     ]);
     expect(await signIn(bbs)).toContain('SIGNED IN AS OBS-02FF');
     await bbs.dispatch('MESSAGES');
-    expect((await bbs.dispatch('READ 1'))!.output.tone).toBe('history');
+    expect((await bbs.dispatch('READ 1'))!.output[0]?.tone).toBe('history');
     await bbs.dispatch('MENU');
     await bbs.dispatch('DOORS');
     expect(bbs.screen().actions).toContainEqual({ command: 'OPEN fault', label: 'Counter' });
     expect(load).not.toHaveBeenCalled();
-    expect((await bbs.dispatch('OPEN fault'))!.output.lines).toContain(offer.board.doorError);
+    expect((await bbs.dispatch('OPEN fault'))!.output.flatMap(({ lines }) => lines)).toContain(
+      offer.board.doorError,
+    );
     expect(load).toHaveBeenCalledOnce();
     expect(bbs.screen().phase).toBe('menu');
     await bbs.dispatch('DOORS');
-    expect((await bbs.dispatch(`OPEN ${relay.id}`))!.output.lines).toContain(firstPrompt);
-    expect((await bbs.dispatch(answer(0)))!.output.lines).toContain(secondPrompt);
+    expect(
+      (await bbs.dispatch(`OPEN ${relay.id}`))!.output.flatMap(({ lines }) => lines),
+    ).toContain(firstPrompt);
+    expect((await bbs.dispatch(answer(0)))!.output.flatMap(({ lines }) => lines)).toContain(
+      secondPrompt,
+    );
   });
 
   it('handles one selection at a time while a code door is loading', async () => {
@@ -364,15 +376,21 @@ describe('BBS door recovery', () => {
     await signIn(bbs);
     await bbs.dispatch('DOORS');
     expect(bbs.screen().actions.map(({ command }) => command)).not.toContain('OPEN locked');
-    expect((await bbs.dispatch('OPEN locked'))!.output.lines).toContain('DOOR UNAVAILABLE.');
+    expect((await bbs.dispatch('OPEN locked'))!.output.flatMap(({ lines }) => lines)).toContain(
+      'DOOR UNAVAILABLE.',
+    );
     expect(loadLocked).not.toHaveBeenCalled();
     const opening = bbs.dispatch('OPEN slow');
     await expect(bbs.dispatch('OPEN slow')).resolves.toBeUndefined();
     await expect(bbs.dispatch('DISCONNECT')).resolves.toBeUndefined();
     finish({ default: defineDoor(counterDefinition()) });
-    expect((await opening)!.output.lines).toContain('COUNT 0');
+    const launched = (await opening)!;
+    expect(launched.output.flatMap(({ lines }) => lines)).toContain('COUNT 0');
+    expect(launched.effect).toEqual({ history: { kind: 'door', id: 'slow' } });
     expect(load).toHaveBeenCalledOnce();
-    expect((await bbs.dispatch('EXIT'))!.output.lines).toContain('DEEP FIELD MAIN MENU');
+    expect((await bbs.dispatch('EXIT'))!.output.flatMap(({ lines }) => lines)).toContain(
+      'DEEP FIELD MAIN MENU',
+    );
   });
 });
 
@@ -384,19 +402,31 @@ it('shows the authored board reward only after relay trivia completion and keeps
   expect(offer.board.status).toContainEqual({ when: reward, text: acknowledgement });
   expect(await signIn(bbs)).not.toContain(acknowledgement);
   await bbs.dispatch('DOORS');
-  expect((await bbs.dispatch(`OPEN ${relay.id}`))!.output.lines).toContain(firstPrompt);
+  expect((await bbs.dispatch(`OPEN ${relay.id}`))!.output.flatMap(({ lines }) => lines)).toContain(
+    firstPrompt,
+  );
   await bbs.dispatch(answer(0));
-  expect((await bbs.dispatch('EXIT'))!.output.lines).not.toContain(acknowledgement);
+  expect((await bbs.dispatch('EXIT'))!.output.flatMap(({ lines }) => lines)).not.toContain(
+    acknowledgement,
+  );
   await bbs.dispatch('DOORS');
-  expect((await bbs.dispatch(`OPEN ${relay.id}`))!.output.lines).toContain(secondPrompt);
-  expect((await bbs.dispatch(answer(1)))!.output.lines).toContain(completion);
+  expect((await bbs.dispatch(`OPEN ${relay.id}`))!.output.flatMap(({ lines }) => lines)).toContain(
+    secondPrompt,
+  );
+  expect((await bbs.dispatch(answer(1)))!.output.flatMap(({ lines }) => lines)).toContain(
+    completion,
+  );
   expect(factsOf(live).has(reward)).toBe(true);
-  expect((await bbs.dispatch('EXIT'))!.output.lines).toContain(acknowledgement);
+  expect((await bbs.dispatch('EXIT'))!.output.flatMap(({ lines }) => lines)).toContain(
+    acknowledgement,
+  );
   expect(bbs.screen().phase).toBe('menu');
   const reloaded = openBoard(storage);
   expect(factsOf(reloaded.data).has(reward)).toBe(true);
   expect(await signIn(reloaded.bbs)).toContain(acknowledgement);
   await reloaded.bbs.dispatch('DOORS');
-  expect((await reloaded.bbs.dispatch(`OPEN ${relay.id}`))!.output.lines).toContain(completion);
+  expect(
+    (await reloaded.bbs.dispatch(`OPEN ${relay.id}`))!.output.flatMap(({ lines }) => lines),
+  ).toContain(completion);
   expect(reloaded.bbs.screen().actions).toEqual([{ command: 'EXIT', label: 'EXIT' }]);
 });

@@ -1,5 +1,7 @@
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
+import { freshSave } from '../../src/progress/save.ts';
+import { seedSaveOnce } from './helpers.ts';
 
 const SAVE_KEY = 'signal-lost.save';
 
@@ -152,4 +154,54 @@ test('settings work from the keyboard, and reset asks first', async ({ page }) =
   await page.keyboard.press('Enter');
   await expect(page.getByRole('log')).toContainText('SIGNAL RECEIVED');
   expect(await puzzles()).toEqual([]);
+});
+
+test('high-readability BBS colors stay opaque as effects and motion change', async ({ page }) => {
+  const data = freshSave(42);
+  data.episodes.push('episode.000');
+  data.profile.designation = 'OBS-0001';
+  await seedSaveOnce(page, JSON.stringify(data));
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('./');
+  await join(page);
+  await page.getByRole('button', { name: /\] CONNECT$/ }).click();
+  await page.getByRole('button', { name: 'USE DESIGNATION (OBS-0001)' }).click();
+  await openSettings(page);
+  const theme = page.getByLabel('BBS THEME');
+  await theme.selectOption('high-readability');
+  await page.mouse.move(0, 0);
+
+  const log = page.getByRole('log');
+  const settings = page.getByRole('button', { name: 'SETTINGS', exact: true });
+  await expect(log).toHaveCSS('background-color', 'rgb(16, 18, 22)');
+  await expect(settings).toHaveCSS('background-color', 'rgb(32, 36, 43)');
+  await expect(settings).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(page.locator('#app')).toHaveCSS('z-index', '3');
+  await expect(page.locator('.effects')).toHaveCSS('z-index', '2');
+  await expect(page.locator('.effects')).toBeVisible();
+  await expect(page.locator('.interference')).toBeHidden();
+
+  await page.getByLabel('REDUCE MOTION').uncheck();
+  await expect(page.locator('.interference')).toBeVisible();
+  await page.getByLabel('SCREEN EFFECTS').uncheck();
+  await expect(page.locator('.effects')).toBeHidden();
+  await expect(page.locator('.interference')).toBeHidden();
+  await expect(log).toHaveCSS('background-color', 'rgb(16, 18, 22)');
+  await expect(theme).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await page.getByRole('button', { name: 'CLOSE' }).click();
+  await expect(page.getByLabel('BBS>')).toBeFocused();
+  await openSettings(page);
+  await page.getByRole('button', { name: 'BOARDS', exact: true }).click();
+  await expect(theme).toBeHidden();
+  await expect(page.getByLabel('BBS>')).toBeFocused();
+
+  await page.reload();
+  await join(page);
+  await page.getByRole('button', { name: /\] CONNECT$/ }).click();
+  await page.getByRole('button', { name: 'USE DESIGNATION (OBS-0001)' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-motion', 'on');
+  await expect(page.locator('.effects')).toBeHidden();
+  await openSettings(page);
+  await expect(theme).toHaveValue('high-readability');
+  await expect(page.getByLabel('REDUCE MOTION')).not.toBeChecked();
 });

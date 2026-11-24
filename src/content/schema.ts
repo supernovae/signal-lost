@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bbsThemeIds } from '../bbs/themes.ts';
 import type { Condition } from './conditions.ts';
 
 const id = z
@@ -31,6 +32,9 @@ const record = {
   attribution: attribution.optional(),
   provenance: z.string().optional(),
 };
+
+const origin = z.enum(['fictional', 'reviewed-community']).default('fictional');
+const messageTone = z.enum(['history', 'ai-fictional', 'recovered', 'private']);
 
 export const episodeSchema = z.strictObject({
   ...record,
@@ -128,6 +132,8 @@ export const transmissionSchema = z.strictObject({
 
 export const archiveSchema = z.strictObject({
   ...record,
+  origin,
+  presentation: messageTone.default('recovered'),
   board: z.string(),
   title: z.string(),
   from: z.string(),
@@ -154,12 +160,165 @@ export const bbsBoardSchema = z.strictObject({
 export const bbsMessageSchema = z.strictObject({
   ...record,
   kind: z.literal('message'),
+  origin,
+  presentation: messageTone.default('history'),
   board: id,
   title: z.string().min(1),
   from: z.string().min(1),
   date: z.string().min(1),
   body: text.min(1),
 });
+
+export const bbsMessageBoardSchema = z.strictObject({
+  ...record,
+  kind: z.literal('message-board'),
+  bbs: id,
+  title: z.string().min(1),
+  description: text,
+});
+
+export const bbsThreadSchema = z.strictObject({
+  ...record,
+  kind: z.literal('thread'),
+  board: id,
+  title: z.string().min(1),
+  order: z.number().int().nonnegative(),
+  messages: z.array(z.strictObject({ kind: z.enum(['message', 'archive']), id })).min(1),
+  replies: z.array(z.strictObject({ id, label: z.string().min(1), messageId: id })).default([]),
+});
+
+export const bbsProfileSchema = z.strictObject({
+  ...record,
+  kind: z.literal('profile'),
+  bbs: id,
+  characterId: id,
+  handle: z.string().min(1),
+  bio: text.min(1),
+});
+
+export const bbsSecretSchema = z.strictObject({
+  ...record,
+  kind: z.literal('secret'),
+  bbs: id,
+  command: z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/),
+  clueMessageId: id,
+  output: text.min(1),
+});
+
+export const bbsPublicCommands = [
+  'CONNECT',
+  'DESIGNATION',
+  'LOGIN',
+  'HELP',
+  'DISCONNECT',
+  'MENU',
+  'BACK',
+  'MESSAGES',
+  'READ',
+  'SYSOP',
+  'DOORS',
+  'OPEN',
+  'EXIT',
+  'BOARDS',
+  'BOARD',
+  'THREAD',
+  'REPLY',
+  'PEOPLE',
+  'PROFILE',
+  'DIRECTORY',
+  'NETWORK',
+  'HISTORY',
+  'SETTINGS',
+] as const;
+
+const bbsTones = [
+  'system',
+  'history',
+  'sysop',
+  'ai-fictional',
+  'recovered',
+  'private',
+  'door',
+  'network-error',
+  'restricted',
+] as const;
+const bbsHistoryKinds = [
+  'sign-in',
+  'board',
+  'thread',
+  'read',
+  'profile',
+  'directory',
+  'doors',
+  'network',
+  'door',
+  'reply',
+  'secret',
+  'disconnect',
+] as const;
+export const bbsInterfaceSchema = z.strictObject({
+  ...record,
+  kind: z.literal('interface'),
+  actions: z.record(z.enum(bbsPublicCommands), z.string()),
+  tones: z.record(z.enum(bbsTones), z.string()),
+  history: z.record(z.enum(bbsHistoryKinds), z.string()),
+  origins: z.record(z.enum(['fictional', 'reviewed-community']), z.string()),
+  themes: z.record(z.enum(bbsThemeIds), z.string()),
+  text: z.strictObject({
+    prompt: z.string(),
+    handle: z.string(),
+    signIn: z.string(),
+    title: z.string(),
+    loginHint: z.string(),
+    customHint: z.string(),
+    menuHint: z.string(),
+    viewHint: z.string(),
+    messagesHint: z.string(),
+    noMessages: z.string(),
+    noThreads: z.string(),
+    doorsHint: z.string(),
+    noDoors: z.string(),
+    doorHint: z.string(),
+    doorUnavailable: z.string(),
+    doorError: z.string(),
+    doorDirectory: z.string(),
+    connected: z.string(),
+    disconnected: z.string(),
+    noDesignation: z.string(),
+    enterHandle: z.string(),
+    chooseMessage: z.string(),
+    chooseDoor: z.string(),
+    invalid: z.string(),
+    section: z.string(),
+    listing: z.string(),
+    doorListing: z.string(),
+    from: z.string(),
+    date: z.string(),
+    credit: z.string(),
+    read: z.string(),
+    unread: z.string(),
+    marked: z.string(),
+    profile: z.string(),
+    chosen: z.string(),
+    available: z.string(),
+    restricted: z.string(),
+    emptyHistory: z.string(),
+    removed: z.string(),
+    discoveryKnown: z.string(),
+    saveRefused: z.string(),
+    theme: z.string(),
+  }),
+});
+
+export const bbsSchema = z.discriminatedUnion('kind', [
+  bbsBoardSchema,
+  bbsMessageSchema,
+  bbsMessageBoardSchema,
+  bbsThreadSchema,
+  bbsProfileSchema,
+  bbsSecretSchema,
+  bbsInterfaceSchema,
+]);
 
 export const doorMetadataSchema = z.strictObject({
   ...record,
@@ -253,6 +412,9 @@ export type Transmission = z.infer<typeof transmissionSchema>;
 export type Archive = z.infer<typeof archiveSchema>;
 export type BbsBoard = z.infer<typeof bbsBoardSchema>;
 export type BbsMessage = z.infer<typeof bbsMessageSchema>;
+export type BbsRecord = z.infer<typeof bbsSchema>;
+export type BbsThread = z.infer<typeof bbsThreadSchema>;
+export type BbsTone = (typeof bbsTones)[number];
 export type DoorMetadata = z.infer<typeof doorMetadataSchema>;
 export type TriviaDoor = z.infer<typeof triviaDoorSchema>;
 export type Character = z.infer<typeof characterSchema>;
@@ -267,7 +429,7 @@ export interface Content {
   puzzles: Puzzle[];
   transmissions: Transmission[];
   archives: Archive[];
-  bbs: (BbsBoard | BbsMessage)[];
+  bbs: BbsRecord[];
   doors: TriviaDoor[];
   characters: Character[];
   sectors: Sector[];

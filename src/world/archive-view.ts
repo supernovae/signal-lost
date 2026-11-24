@@ -1,3 +1,5 @@
+import { messageCredit } from '../bbs/copy.ts';
+import { createOriginBadge } from '../terminal/terminal.ts';
 import type { Archive } from '../content/schema.ts';
 import { searchArchives } from './archive.ts';
 
@@ -34,12 +36,12 @@ export function openArchive(
       line.textContent = text || ' ';
       return line;
     });
-    reader.replaceChildren(heading, meta, ...body);
-    if (archive.attribution) {
+    reader.replaceChildren(heading, meta, createOriginBadge(archive.origin), ...body);
+    const attribution = messageCredit(archive.attribution);
+    if (attribution) {
       const credit = document.createElement('p');
       credit.className = 'dim credit';
-      const handle = archive.attribution.handle ? ` (${archive.attribution.handle})` : '';
-      credit.textContent = `FILED BY: ${archive.attribution.author}${handle}`;
+      credit.textContent = attribution;
       reader.append(credit);
     }
     reader.scrollTop = 0;

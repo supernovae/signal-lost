@@ -47,13 +47,14 @@ test('keyboard first contact and relay trivia from a migrated completed save', a
   await expect(log).not.toContainText('RELAY DRILL: COMPLETE');
   await typeCommand(page, 'BBS>', 'DOORS');
   const system = log.locator('.system').last();
-  await expect(system).toContainText('DEEP FIELD DOOR DIRECTORY');
+  const door = log.locator('.door').last();
+  await expect(door).toContainText('DEEP FIELD DOOR DIRECTORY');
   await typeCommand(page, 'BBS>', 'OPEN relay-trivia');
-  await expect(system).toContainText('Which port gets the dummy load for a bench-only test?');
+  await expect(door).toContainText('Which port gets the dummy load for a bench-only test?');
   await typeCommand(page, 'BBS>', '2');
-  await expect(system).toContainText('Which kit lets you monitor the receiver');
+  await expect(door).toContainText('Which kit lets you monitor the receiver');
   await typeCommand(page, 'BBS>', '1');
-  await expect(system).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
+  await expect(door).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
   await typeCommand(page, 'BBS>', 'EXIT');
   await expect(system).toContainText('DEEP FIELD MAIN MENU');
   await expect(system).toContainText('RELAY DRILL: COMPLETE');
@@ -70,7 +71,7 @@ test('keyboard first contact and relay trivia from a migrated completed save', a
   await typeCommand(page, 'BBS>', 'MENU');
   await typeCommand(page, 'BBS>', 'DOORS');
   await typeCommand(page, 'BBS>', 'OPEN relay-trivia');
-  await expect(system).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
+  await expect(door).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
   await typeCommand(page, 'BBS>', 'EXIT');
   await expect(system).toContainText('DEEP FIELD MAIN MENU');
 
@@ -96,9 +97,6 @@ test('clickable first contact keeps the custom handle and message progress after
   await page.goto('./');
   await joinWithEnter(page);
 
-  await page.addStyleTag({
-    content: 'body[data-scene="bbs"] :is(.system, .history, .sysop) { color: white !important; }',
-  });
   const log = page.getByRole('log');
   const button = (name: string) => page.getByRole('button', { name, exact: true });
   const handle = page.getByLabel('FICTIONAL HANDLE');
@@ -107,7 +105,7 @@ test('clickable first contact keeps the custom handle and message progress after
   await expect(log.getByText(/TYPE DESIGNATION OR LOGIN/)).toBeVisible();
   const system = log.locator('.system').first();
   await expect(system.getByText('SYSTEM', { exact: true })).toBeVisible();
-  await expect(system).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(system).toHaveCSS('color', 'rgb(255, 204, 123)');
   await button('HELP').click();
   await expect(log.locator('.system').last()).toContainText('LOGIN <HANDLE>');
 
@@ -129,13 +127,13 @@ test('clickable first contact keeps the custom handle and message progress after
   await expect(history.getByText('HISTORICAL MESSAGE', { exact: true })).toBeVisible();
   await expect(history.getByText('FROM: TKEEL', { exact: true })).toBeVisible();
   await expect(history.getByText('DATE: 2001-03-01', { exact: true })).toBeVisible();
-  await expect(history).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(history).toHaveCSS('color', 'rgb(248, 217, 168)');
 
   await button('MAIN MENU').click();
   await button('SYSOP').click();
   const sysop = log.locator('.sysop');
   await expect(sysop.getByText('SYSOP', { exact: true })).toBeVisible();
-  await expect(sysop).toHaveCSS('color', 'rgb(255, 255, 255)');
+  await expect(sysop).toHaveCSS('color', 'rgb(243, 192, 255)');
   await button('DISCONNECT').click();
   await expect(page.getByLabel('OBS>')).toBeFocused();
   await page.getByRole('button', { name: /\] STATUS$/ }).click();
@@ -163,4 +161,165 @@ test('clickable first contact keeps the custom handle and message progress after
     bbsReadMessages: ['archive:lore.last-sysop'],
     archives: [],
   });
+});
+
+for (const input of ['keyboard', 'pointer'] as const) {
+  test(`BBS navigation and local progress from the ${input}`, async ({ page }) => {
+    if (input === 'keyboard') await page.setViewportSize({ width: 360, height: 640 });
+    await seedSaveOnce(page, completedV1);
+    await page.goto('./');
+    await joinWithEnter(page);
+    const prompt = page.getByLabel('BBS>');
+    const log = page.getByRole('log');
+    const button = (name: string) => page.getByRole('button', { name, exact: true });
+    const activate = async (name: string) => {
+      const target = button(name);
+      await expect(target).toBeVisible();
+      if (input === 'pointer') {
+        await target.click();
+        return;
+      }
+      await expect(prompt).toBeFocused();
+      const controls = await page
+        .getByRole('navigation', { name: 'Tools' })
+        .getByRole('button')
+        .count();
+      for (let i = 0; i < controls; i++) {
+        await page.keyboard.press('Shift+Tab');
+        if (await target.evaluate((element) => element === document.activeElement)) break;
+      }
+      await expect(target).toBeFocused();
+      await expect(target).toBeInViewport();
+      await page.keyboard.press('Enter');
+    };
+
+    async function signIn() {
+      if (input === 'keyboard') await typeCommand(page, 'OBS>', 'CONNECT');
+      else await connect(page).click();
+      await activate('USE DESIGNATION (OBS-02FF)');
+      await expect(prompt).toBeFocused();
+    }
+    async function goToThread() {
+      await activate('BOARDS');
+      if (input === 'keyboard') await typeCommand(page, 'BBS>', 'BOARD general');
+      else await activate('GENERAL');
+      await activate('Relay desk notes');
+      await expect(prompt).toBeFocused();
+    }
+
+    await signIn();
+    await goToThread();
+    await expect(log.locator('.ai-fictional')).toContainText('type LINECHECK');
+    const fictional = log.locator('.ai-fictional').getByText('FICTIONAL', { exact: true });
+    await expect(fictional).toBeVisible();
+    await expect(fictional).toHaveCSS('background-color', 'rgb(53, 35, 25)');
+    await activate('HELP');
+    await expect(log.locator('.system').last()).not.toContainText(/LINECHECK/i);
+    await expect(button('LINECHECK')).toHaveCount(0);
+    await typeCommand(page, 'BBS>', 'LiNeChEcK');
+    await expect(log.locator('.private').last()).toContainText('LOCAL LINE CHECK COMPLETE.');
+    await activate('Acknowledge the note');
+    await expect(log.locator('.private').last()).toContainText('Receipt filed');
+    await expect(button('Acknowledge the note')).toHaveAttribute('aria-pressed', 'true');
+    await expect(button('Leave the note pending')).toBeDisabled();
+
+    await activate('BACK');
+    await activate('BACK');
+    await activate('SECOND LINE');
+    await activate('A note from the second line');
+    const recovered = log.locator('.recovered');
+    const reviewed = recovered.getByText('REVIEWED COMMUNITY CONTRIBUTION');
+    await expect(reviewed).toBeVisible();
+    await expect(reviewed).toHaveCSS('background-color', 'rgb(21, 53, 44)');
+    await expect(recovered).toContainText('FILED BY: SIGNAL//LOST maintainers (supernovae)');
+    await activate('MAIN MENU');
+
+    await activate('PEOPLE');
+    await activate('ECHO');
+    await expect(log.locator('.history')).toContainText('Its messages are scripted records');
+    await activate('BACK');
+    await expect(button('ECHO')).toBeVisible();
+    await activate('MAIN MENU');
+
+    await activate('DIRECTORY');
+    await activate('DOORS');
+    await expect(log.locator('.door')).toContainText('RELAY TRIVIA');
+    await activate('BACK');
+    await activate('NETWORK');
+    await expect(log.locator('.restricted')).toContainText('SILENT OBSERVATORY | RESTRICTED');
+    await activate('MAIN MENU');
+    await activate('HISTORY');
+    await expect(log.locator('.system').last()).toContainText(
+      'Replied in Relay desk notes: Acknowledge the note',
+    );
+    await activate('MAIN MENU');
+
+    await activate('SETTINGS');
+    const theme = page.getByLabel('BBS THEME');
+    await expect(theme).toBeFocused();
+    if (input === 'keyboard') {
+      await theme.press('ArrowDown');
+      await theme.press('ArrowDown');
+    } else {
+      await theme.selectOption('high-readability');
+    }
+    await expect(theme).toHaveValue('high-readability');
+    await expect(theme).toHaveCSS('background-color', 'rgb(27, 32, 40)');
+    await expect(log).toHaveCSS('background-color', 'rgb(16, 18, 22)');
+    await expect(log.locator('.ai-fictional')).toHaveCSS('color', 'rgb(243, 220, 255)');
+    if (input === 'keyboard') {
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Tab');
+      await expect(button('CLOSE')).toBeFocused();
+      await page.keyboard.press('Enter');
+    } else {
+      await button('CLOSE').click();
+    }
+    await expect(prompt).toBeFocused();
+
+    await page.reload();
+    await joinWithEnter(page);
+    await signIn();
+    await goToThread();
+    await expect(log.getByText('Receipt filed', { exact: true })).toHaveCount(1);
+    await expect(button('Acknowledge the note')).toHaveAttribute('aria-pressed', 'true');
+    await expect(log.locator('.ai-fictional')).toHaveCSS('color', 'rgb(243, 220, 255)');
+    await typeCommand(page, 'BBS>', 'LINECHECK');
+    await expect(log.locator('.private').last()).toContainText(
+      'ALREADY DISCOVERED ON THIS TERMINAL.',
+    );
+    await activate('MAIN MENU');
+    await activate('HISTORY');
+    const history = log.locator('.system').last();
+    await expect(history.getByText('Discovered: LINECHECK', { exact: true })).toHaveCount(1);
+    await expect(history.getByText('Viewed profile: ECHO', { exact: true })).toBeVisible();
+    await expect(history.getByText('Viewed network directory', { exact: true })).toBeVisible();
+    await activate('MAIN MENU');
+    await activate('SETTINGS');
+    await expect(theme).toHaveValue('high-readability');
+  });
+}
+
+test('a refused reply save shows in-tab feedback and preserves stored bytes', async ({ page }) => {
+  await seedSaveOnce(page, completedV1);
+  await page.goto('./');
+  await joinWithEnter(page);
+  await typeCommand(page, 'OBS>', 'CONNECT');
+  for (const command of ['DESIGNATION', 'BOARDS', 'BOARD general', 'THREAD relay-thread']) {
+    await typeCommand(page, 'BBS>', command);
+  }
+  const prior = await page.evaluate((key) => {
+    Storage.prototype.setItem = () => {
+      throw new Error('storage refused write');
+    };
+    return localStorage.getItem(key);
+  }, SAVE_KEY);
+  await typeCommand(page, 'BBS>', 'REPLY defer');
+  await expect(page.getByRole('log').locator('.network-error')).toContainText(
+    'LOCAL SAVE UNAVAILABLE. THIS ACTION IS KEPT IN THIS TAB.',
+  );
+  await expect(page.getByRole('button', { name: 'Leave the note pending' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  expect(await page.evaluate((key) => localStorage.getItem(key), SAVE_KEY)).toBe(prior);
 });
