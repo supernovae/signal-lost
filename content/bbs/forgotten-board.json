@@ -1,0 +1,18 @@
+{
+  "kind": "message-board",
+  "id": "forgotten-board",
+  "bbs": "deep-field",
+  "title": "THE FORGOTTEN BOARD",
+  "description": [
+    "The relay delivered two signed messages after their authors stopped appearing on the board."
+  ],
+  "check": {
+    "verb": "SEARCH",
+    "answer": "Q17",
+    "evidenceMessageIds": ["q17-queue-index"],
+    "prompt": "Type SEARCH <batch id> to locate a queued batch.",
+    "missingEvidence": "Read Delivered messages and queue index before searching. The queue receipt is filed there.",
+    "incorrect": "No matching batch. Check the identifier on the queue receipt in Delivered messages and queue index.",
+    "responseMessageId": "q17-batch-located"
+  }
+}

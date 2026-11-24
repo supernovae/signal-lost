@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "q17-hold-receipt-thread",
+  "board": "q17-custody-desk",
+  "title": "Migration hold receipt",
+  "order": 2,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "q17-hold-receipt"
+    }
+  ]
+}

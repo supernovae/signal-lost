@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "forgotten-ledger-thread",
+  "board": "forgotten-board",
+  "title": "Departure ledger",
+  "order": 2,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "q17-departure-ledger"
+    }
+  ]
+}

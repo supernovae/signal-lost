@@ -1,0 +1,12 @@
+{
+  "kind": "message",
+  "id": "q17-comparison",
+  "board": "q17-custody-desk",
+  "title": "Original and dispatch comparison",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "body": [
+    "P17 sealed original = P17 dispatch copy 141 | signature labels match | equality verified.",
+    "G17 sealed original = G17 dispatch copy 142 | signature labels match | equality verified."
+  ]
+}

@@ -13,6 +13,19 @@
   ],
   "sysopCharacterId": "sysop",
   "archiveIds": ["lore.last-sysop"],
-  "status": [{ "when": "flag:relay-trivia-complete", "text": "RELAY DRILL: COMPLETE" }],
+  "status": [
+    {
+      "when": "flag:relay-trivia-complete",
+      "text": "RELAY DRILL: COMPLETE"
+    },
+    {
+      "when": "completed:episode.000",
+      "text": "BOARDS / THE FORGOTTEN BOARD has the retained messages."
+    },
+    {
+      "when": "flag:deferred-verified",
+      "text": "Q17 PROOF: DEFERRED VERIFIED. Confirmation filed in MESSAGES."
+    }
+  ],
   "doorError": "DOOR CARRIER LOST. BACK AT DEEP FIELD."
 }

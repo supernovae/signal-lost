@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "forgotten-farewell-thread",
+  "board": "forgotten-board",
+  "title": "Keel’s farewell",
+  "order": 0,
+  "messages": [
+    {
+      "kind": "archive",
+      "id": "lore.last-sysop"
+    }
+  ]
+}

@@ -230,6 +230,9 @@ export const eventSchema = z.strictObject({
     .min(1),
 });
 
+export const bbsCheckVerbs = ['SEARCH', 'SUBMIT'] as const;
+const checkLine = z.string().trim().min(1);
+
 export const bbsMessageBoardSchema = z.strictObject({
   ...record,
   kind: z.literal('message-board'),
@@ -237,6 +240,21 @@ export const bbsMessageBoardSchema = z.strictObject({
   title: z.string().min(1),
   description: text,
   access: z.strictObject({ level: id, deniedText: z.string().trim().min(1) }).optional(),
+  requires: condition.optional(),
+  check: z
+    .strictObject({
+      verb: z.enum(bbsCheckVerbs),
+      answer: z.string().regex(/^\S+$/, 'use one nonblank answer token'),
+      evidenceMessageIds: z
+        .array(id)
+        .min(1)
+        .refine((ids) => new Set(ids).size === ids.length, 'evidence messages must be unique'),
+      prompt: checkLine,
+      missingEvidence: checkLine,
+      incorrect: checkLine,
+      responseMessageId: id,
+    })
+    .optional(),
 });
 
 export const bbsThreadSchema = z.strictObject({

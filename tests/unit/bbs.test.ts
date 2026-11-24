@@ -15,6 +15,7 @@ import { settleEvents } from '../../src/progress/events.ts';
 import { factsOf, openSaveSession } from '../../src/progress/save.ts';
 import { createGame } from '../../src/puzzle/game.ts';
 import discoveryFixture from '../fixtures/bbs-discovery.json';
+import completedV1 from '../fixtures/episode-000-complete-v1.json';
 
 const contentDir = resolve('content');
 const completed = new Set(['completed:episode.000']);
@@ -75,7 +76,7 @@ function boardSession(
   const game = createGame({ content: records, data, persist });
   const voices = createDialogueSources(records.characters);
   const bbs = createBbs(
-    offer(records),
+    getBbsOffer(records, factsOf(data))!,
     () => data,
     {
       list: () => registry.list(factsOf(data)),
@@ -354,7 +355,9 @@ it('lists both boards and sorts visible threads by authored order and ID while p
   expect(errors).toEqual([]);
   const { run, bbs, commands, data, storage } = boardSession(sessionData(), records);
   runAll(run, 'CONNECT', 'DESIGNATION', 'BOARDS');
-  expect(commands().slice(0, 2)).toEqual(['BOARD general', 'BOARD second-line']);
+  expect(
+    commands().filter((command) => /^(BOARD general|BOARD second-line)$/.test(command)),
+  ).toEqual(['BOARD general', 'BOARD second-line']);
   expect(run('BOARD general extra').effect).toBeUndefined();
   expect(run('BOARD missing').effect).toBeUndefined();
   run('BOARD general');
@@ -636,4 +639,447 @@ it('exposes a public bundled clue without requiring its optional command', () =>
   expect(lines(run('HELP')).join(' ')).not.toContain('LINECHECK');
   expect(lines(run('LiNeChEcK'))).toContain('LOCAL LINE CHECK COMPLETE.');
   expect(data.bbs.discoveries).toEqual(['linecheck']);
+});
+
+describe('the Q17 investigation', () => {
+  const desk = {
+    headers: {
+      board: 'Q17 HEADER DESK',
+      id: 'q17-header-desk',
+      evidence: [
+        [
+          'THE FORGOTTEN BOARD',
+          'Departure ledger',
+          [
+            'PACKET last present on 2001-03-02 | checkpoint 120.',
+            'GHOST last present on 2001-03-03 | checkpoint 121.',
+          ],
+        ],
+        [
+          'Q17 HEADER DESK',
+          'Q17 message headers',
+          [
+            'P17 / PACKET | WRITTEN 2001-03-01 18:10 | DELIVERED 141',
+            'G17 / GHOST | WRITTEN 2001-03-02 09:20 | DELIVERED 142',
+          ],
+        ],
+        [
+          'Q17 HEADER DESK',
+          'Queue policy',
+          [
+            'WRITTEN records sealed composition. DELIVERED records dispatch, not new authorship. A migration-held record released unchanged is DEFERRED.',
+          ],
+        ],
+      ],
+      rejection:
+        'Read Departure ledger on THE FORGOTTEN BOARD, then Q17 message headers and Queue policy on this desk.',
+      retry: 'Compare WRITTEN with DELIVERED',
+      resultId: 'q17-header-confirmation',
+      title: 'Q17 header confirmation',
+      confirmation: 'DEFERRED VERIFIED / HEADER ANALYSIS',
+      flag: 'deferred-headers-verified',
+      echo: 'corrected my dispatch memory against those fields',
+      sysop: 'HEADER PROOF ACCEPTED. CUSTODY AUDIT PENDING.',
+    },
+    custody: {
+      board: 'Q17 CUSTODY DESK',
+      id: 'q17-custody-desk',
+      evidence: [
+        [
+          'Q17 CUSTODY DESK',
+          'Sealed originals',
+          [
+            'P17 | PACKET | repair note | seal intact.',
+            'G17 | GHOST | preservation note | seal intact.',
+          ],
+        ],
+        [
+          'Q17 CUSTODY DESK',
+          'Dispatch comparison',
+          [
+            'P17 sealed original = P17 dispatch copy 141 | signature labels match | equality verified.',
+            'G17 sealed original = G17 dispatch copy 142 | signature labels match | equality verified.',
+          ],
+        ],
+        [
+          'Q17 CUSTODY DESK',
+          'Migration hold receipt',
+          [
+            'Q17: migration hold; sealed before departure; release unchanged after checkpoint 121.',
+            'Custody policy classifies an unchanged release from migration hold as DEFERRED.',
+          ],
+        ],
+      ],
+      rejection:
+        'Read Sealed originals, Dispatch comparison and Migration hold receipt before filing a custody finding.',
+      retry: 'Reconcile the finding with the migration hold receipt',
+      resultId: 'q17-custody-confirmation',
+      title: 'Q17 custody confirmation',
+      confirmation: 'DEFERRED VERIFIED / CUSTODY AUDIT',
+      flag: 'deferred-custody-verified',
+      echo: 'corrected my dispatch memory against SYSOP’s receipt',
+      sysop: 'CUSTODY AUDIT FILED. BOTH DISPATCH COPIES MATCH',
+    },
+  } as const;
+  type Journey = ReturnType<typeof boardSession>;
+  type Desk = (typeof desk)[keyof typeof desk];
+  const correction = 'Delivery is not authorship. I had those reversed.';
+  const receipt = 'Queue receipt: Q17; search batch identifier.';
+
+  function start(forgeOpened = true) {
+    const flags = completedV1.flags.filter((flag) => forgeOpened || flag !== 'forge-opened');
+    const journey = boardSession(
+      sessionData(memoryStorage(JSON.stringify({ ...completedV1, flags }))),
+    );
+    expect(journey.status).toBe('migrated');
+    expect(journey.data.flags.includes('forge-opened')).toBe(forgeOpened);
+    expect(journey.data.flags.filter((flag) => flag.startsWith('deferred-'))).toEqual([]);
+    expect(journey.data.bbsReadMessages).toEqual([]);
+    expect(journey.data.events).toEqual({ fired: [], bulletins: [] });
+    runAll(journey.run, 'CONNECT', 'DESIGNATION');
+    return journey;
+  }
+
+  function reopen({ storage }: Journey) {
+    const journey = boardSession(sessionData(storage));
+    expect(journey.status).toBe('loaded');
+    runAll(journey.run, 'CONNECT', 'DESIGNATION');
+    return journey;
+  }
+
+  function select(journey: Journey, label: string) {
+    const action = journey.bbs.screen().actions.find((entry) => entry.label === label);
+    expect(action, `available action: ${label}`).toBeDefined();
+    return journey.run(action!.command);
+  }
+
+  function openBoard(journey: Journey, label: string) {
+    journey.run('MENU');
+    select(journey, 'BOARDS');
+    return select(journey, label);
+  }
+
+  function readThread(journey: Journey, board: string, thread: string) {
+    openBoard(journey, board);
+    return select(journey, thread);
+  }
+
+  function readConfirmation(journey: Journey, route: Desk) {
+    journey.run('MENU');
+    select(journey, 'MESSAGES');
+    return select(journey, `${route.title} [READ]`);
+  }
+
+  function noWrite(journey: Journey, command: string) {
+    const data = structuredClone(journey.data);
+    const stored = journey.storage.value;
+    journey.storage.setItem.mockClear();
+    const result = journey.run(command);
+    expect(result.effect).toBeUndefined();
+    expect(journey.data).toEqual(data);
+    expect(journey.storage.value).toBe(stored);
+    expect(journey.storage.setItem).not.toHaveBeenCalled();
+    return lines(result);
+  }
+
+  function discover(journey: Journey) {
+    const index = readThread(journey, 'THE FORGOTTEN BOARD', 'Delivered messages and queue index');
+    expect(lines(index)).toContain(receipt);
+    const found = journey.run('SEARCH Q17');
+    expect(lines(found)).toContain('Q17 batch located');
+    return index;
+  }
+
+  function gather(journey: Journey, route: Desk, omit?: string) {
+    for (const [board, thread, clues] of route.evidence) {
+      if (thread === omit) continue;
+      const found = lines(readThread(journey, board, thread));
+      expect(found).toEqual(expect.arrayContaining([...clues]));
+    }
+    const opened = openBoard(journey, route.board);
+    expect(lines(opened)).toContain(journey.bbs.screen().hint);
+  }
+
+  function voices(journey: Journey) {
+    journey.run('MENU');
+    const sysop = lines(select(journey, 'SYSOP')).join(' ');
+    journey.run('MENU');
+    select(journey, 'PEOPLE');
+    select(journey, 'ECHO');
+    const echo = lines(select(journey, 'TALK')).join(' ');
+    return { sysop, echo };
+  }
+
+  function archivedVoices(journey: Journey) {
+    journey.run('MENU');
+    select(journey, 'PEOPLE');
+    for (const [handle, signature] of [
+      ['PACKET', 'P17'],
+      ['GHOST', 'G17'],
+    ] as const) {
+      const profile = select(journey, handle);
+      expect(profile.output[0]).toMatchObject({ tone: 'history', origin: 'fictional' });
+      expect(lines(profile).join(' ')).toContain('Fictional historical record');
+      expect(lines(profile).join(' ')).toContain(`Signed note ${signature}`);
+      expect(journey.commands()).not.toContain('TALK');
+      expect(noWrite(journey, 'TALK')).toContain('COMMAND UNAVAILABLE HERE.');
+      journey.run('BACK');
+    }
+
+    const index = readThread(journey, 'THE FORGOTTEN BOARD', 'Delivered messages and queue index');
+    const posts = index.output.filter(({ origin }) => origin === 'fictional');
+    expect(posts.map((post) => [post.tone, post.lines[0]])).toEqual([
+      ['history', '141 / PACKET / P17'],
+      ['history', '142 / GHOST / G17'],
+      ['history', 'Retained queue index'],
+    ]);
+    expect(posts[0]?.lines).toContain('Acknowledge receipt. Even if it took a while.');
+    expect(posts[1]?.lines).toContain(
+      'Keep the signature with the note when you move it. Otherwise the copy remembers the words and forgets whose they were.',
+    );
+  }
+
+  function expectHandoffBoundary(journey: Journey) {
+    journey.run('MENU');
+    const sysop = lines(select(journey, 'SYSOP'));
+    journey.run('MENU');
+    const boards = lines(select(journey, 'BOARDS'));
+    const boardLabels = journey.bbs.screen().actions.map(({ label }) => label);
+    journey.run('MENU');
+    const directory = lines(select(journey, 'DIRECTORY'));
+    const network = lines(select(journey, 'NETWORK'));
+    const labels = lines(readThread(journey, 'THE FORGOTTEN BOARD', 'Damaged recovery directory'));
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        'queue-reader | INACCESSIBLE',
+        'signature-checker | INACCESSIBLE',
+        'replay-writer | INACCESSIBLE',
+      ]),
+    );
+    expect(
+      [...sysop, ...boards, ...boardLabels, ...directory, ...network, ...labels].join(' '),
+    ).not.toMatch(/SPOOL-02|MAINTAINER|MAINTENANCE ANNEX|TRAINING SHELF/i);
+  }
+
+  function submit(journey: Journey, route: Desk) {
+    expect(journey.data.events.bulletins).not.toContain(route.resultId);
+    journey.storage.setItem.mockClear();
+    const result = journey.run('  sUbMiT   dEfErReD  ');
+    expect(lines(result)).toContain(route.confirmation);
+    expect(lines(result).join(' ')).toContain(correction);
+    expect(journey.storage.setItem).toHaveBeenCalledOnce();
+    const [, bytes] = journey.storage.setItem.mock.calls[0]!;
+    expect(JSON.parse(bytes)).toMatchObject({
+      bbs: { history: expect.arrayContaining([{ kind: 'read', id: `message:${route.resultId}` }]) },
+      bbsReadMessages: expect.arrayContaining([`message:${route.resultId}`]),
+      flags: expect.arrayContaining([route.flag, 'deferred-verified']),
+      events: {
+        fired: expect.arrayContaining([route.resultId]),
+        bulletins: expect.arrayContaining([route.resultId]),
+      },
+    });
+  }
+
+  it('reveals both desks only after the index-backed search and retains the Act I evidence', () => {
+    const journey = start();
+    select(journey, 'BOARDS');
+    for (const route of Object.values(desk)) {
+      expect(journey.commands()).not.toContain(`BOARD ${route.id}`);
+      expect(noWrite(journey, `BOARD ${route.id}`)).toContain('COMMAND UNAVAILABLE HERE.');
+    }
+    const search = select(journey, 'THE FORGOTTEN BOARD');
+    expect(lines(search)).toContain('Type SEARCH <batch id> to locate a queued batch.');
+    expect(noWrite(journey, 'SEARCH Q17').join(' ')).toContain(
+      'Read Delivered messages and queue index',
+    );
+
+    const farewell = select(journey, 'Keel’s farewell');
+    const original = content.archives.find(({ id }) => id === 'lore.last-sysop')!;
+    expect(farewell.output[1]?.lines).toEqual([
+      'LAST ONE OUT',
+      'FROM: TKEEL',
+      'DATE: 2001-03-01',
+      ...original.body,
+    ]);
+    journey.run('BACK');
+    expect(lines(select(journey, 'Delivered messages and queue index'))).toContain(receipt);
+    expect(noWrite(journey, 'SEARCH Q18').join(' ')).toContain(
+      'Check the identifier on the queue receipt',
+    );
+    journey.run('BACK');
+    expect(lines(select(journey, 'Delivered messages and queue index'))).toContain(receipt);
+    expect(journey.data.events.fired).toEqual([]);
+
+    journey.storage.setItem.mockClear();
+    expect(lines(journey.run('  SeArCh  q17  '))).toContain('Q17 batch located');
+    expect(journey.storage.setItem).toHaveBeenCalledOnce();
+    expect(JSON.parse(journey.storage.value!)).toMatchObject({
+      bbsReadMessages: expect.arrayContaining(['message:q17-batch-located']),
+      flags: expect.arrayContaining(['deferred-batch-located']),
+      events: { fired: ['q17-batch-located'], bulletins: ['q17-batch-located'] },
+    });
+    expect(noWrite(journey, 'SEARCH Q17')).toContain('Q17 batch located');
+    journey.run('MENU');
+    select(journey, 'BOARDS');
+    expect(journey.commands()).toEqual(
+      expect.arrayContaining(['BOARD q17-header-desk', 'BOARD q17-custody-desk']),
+    );
+    expectHandoffBoundary(journey);
+  });
+
+  it.each([
+    { route: desk.headers, forgeOpened: true },
+    { route: desk.headers, forgeOpened: false },
+    { route: desk.custody, forgeOpened: true },
+    { route: desk.custody, forgeOpened: false },
+  ])(
+    'reaches $route.title independently with FORGE opened=$forgeOpened',
+    ({ route, forgeOpened }) => {
+      const journey = start(forgeOpened);
+      expect(lines(readThread(journey, 'THE FORGOTTEN BOARD', 'Keel’s farewell'))).toContain(
+        'LAST ONE OUT',
+      );
+      expect(
+        lines(readThread(journey, 'THE FORGOTTEN BOARD', 'Damaged recovery directory')),
+      ).toContain('DAMAGED DIRECTORY / LABELS ONLY');
+      readThread(journey, 'GENERAL', 'Relay desk notes');
+      discover(journey);
+      const before = voices(journey);
+      expect(before.echo).toContain('SYSOP refuses to let me change the index');
+      expect(before.echo).toContain('Q17 HEADER DESK');
+      expect(before.sysop).toContain('DO NOT OVERWRITE THE INDEX');
+      expect(before.sysop).toContain('CUSTODY ACCOUNTING');
+      archivedVoices(journey);
+
+      gather(journey, route);
+      journey.run('MENU');
+      select(journey, 'MESSAGES');
+      expect(journey.bbs.screen().actions.some(({ label }) => label.includes(route.title))).toBe(
+        false,
+      );
+      openBoard(journey, route.board);
+      expect(noWrite(journey, 'SUBMIT IMPERSONATED').join(' ')).toContain(route.retry);
+      expect(noWrite(journey, 'SUBMIT DEFERRED EXTRA').join(' ')).toContain(route.retry);
+      submit(journey, route);
+      expect(journey.data.flags.filter((flag) => flag.startsWith('deferred-'))).toEqual([
+        'deferred-batch-located',
+        route.flag,
+        'deferred-verified',
+      ]);
+      expect(lines(readConfirmation(journey, route))).toContain(route.confirmation);
+
+      const restored = reopen(journey);
+      openBoard(restored, route.board);
+      expect(noWrite(restored, 'SUBMIT DEFERRED')).toContain(route.confirmation);
+      expect(restored.data.events).toEqual({
+        fired: ['relay-read', 'relay-bulletin', 'q17-batch-located', route.resultId],
+        bulletins: ['relay-bulletin', 'q17-batch-located', route.resultId],
+      });
+      expect(restored.data.flags).toContain('deferred-verified');
+      expect(lines(readConfirmation(restored, route))).toContain(route.confirmation);
+      const after = voices(restored);
+      expect(after.echo).toContain(route.echo);
+      expect(after.sysop).toContain(route.sysop);
+      archivedVoices(restored);
+      expectHandoffBoundary(restored);
+    },
+  );
+
+  it.each(Object.values(desk))(
+    'exposes only navigation and evidence actions on $board',
+    (route) => {
+      const journey = start();
+      expect(noWrite(journey, 'SUBMIT DEFERRED')).toContain('COMMAND UNAVAILABLE HERE.');
+      discover(journey);
+      openBoard(journey, route.board);
+      const commands = journey.commands();
+      expect(commands.filter((command) => !command.startsWith('THREAD '))).toEqual([
+        'BACK',
+        'MENU',
+        'HELP',
+        'DISCONNECT',
+      ]);
+      expect(commands.filter((command) => command.startsWith('THREAD '))).toHaveLength(
+        route === desk.headers ? 2 : 3,
+      );
+      const help = noWrite(journey, 'HELP').join(' ');
+      expect(help).toContain('Type SUBMIT <finding>');
+      expect(help).not.toContain('DEFERRED');
+      for (const candidate of [
+        'SUBMIT DEFERRED',
+        'SUBMIT NEW',
+        'SUBMIT IMPERSONATED',
+        'SUBMIT',
+        'SUBMIT DEFERRED NOW',
+      ]) {
+        expect(noWrite(journey, candidate)).toContain(route.rejection);
+      }
+      for (const command of ['BACK', 'MENU', 'DISCONNECT']) {
+        journey.run(command);
+        expect(journey.data.bbsReadMessages).toEqual(
+          expect.arrayContaining(['message:q17-batch-located']),
+        );
+        expect(journey.data.flags).not.toContain('deferred-verified');
+        expect(journey.data.events.bulletins).toEqual(['q17-batch-located']);
+        if (command === 'DISCONNECT') runAll(journey.run, 'CONNECT', 'DESIGNATION');
+        openBoard(journey, route.board);
+      }
+
+      const [board, thread] = route.evidence[1];
+      readThread(journey, board, thread);
+      expect(noWrite(journey, 'SUBMIT DEFERRED')).toContain(route.rejection);
+    },
+  );
+
+  it.each(
+    Object.values(desk).flatMap((route) =>
+      route.evidence.map((evidence) => ({ route, evidence, missing: evidence[1] })),
+    ),
+  )('requires $missing before $route.title', ({ route, evidence, missing }) => {
+    const journey = start();
+    discover(journey);
+    gather(journey, route, missing);
+    expect(noWrite(journey, 'SUBMIT DEFERRED')).toContain(route.rejection);
+    const [board, thread] = evidence;
+    readThread(journey, board, thread);
+    if (board !== route.board) openBoard(journey, route.board);
+    submit(journey, route);
+  });
+
+  it.each([
+    { first: desk.headers, second: desk.custody },
+    { first: desk.custody, second: desk.headers },
+  ])('retains $first.title when $second.title is filed after reopening', ({ first, second }) => {
+    const journey = start();
+    discover(journey);
+    gather(journey, first);
+    submit(journey, first);
+    expect(journey.data.flags).not.toContain(second.flag);
+    expect(journey.data.events.bulletins).toEqual(['q17-batch-located', first.resultId]);
+
+    const next = reopen(journey);
+    openBoard(next, second.board);
+    expect(noWrite(next, 'SUBMIT DEFERRED')).toContain(second.rejection);
+    gather(next, second);
+    submit(next, second);
+
+    const restored = reopen(next);
+    expect(lines(readConfirmation(restored, first))).toContain(first.confirmation);
+    expect(lines(readConfirmation(restored, second))).toContain(second.confirmation);
+    expect(
+      JSON.parse(restored.storage.value!).flags.filter(
+        (flag: string) => flag === 'deferred-verified',
+      ),
+    ).toEqual(['deferred-verified']);
+    expect(restored.data.events).toEqual({
+      fired: ['q17-batch-located', first.resultId, second.resultId],
+      bulletins: ['q17-batch-located', first.resultId, second.resultId],
+    });
+    expect(voices(restored)).toEqual({
+      echo: 'ECHO: The headers place composition before departure. The custody audit confirms the same copies came out of the hold. Both records stay on file.',
+      sysop: 'HEADER PROOF AND CUSTODY AUDIT FILED. ORIGINALS REMAIN READ-ONLY.',
+    });
+    archivedVoices(restored);
+    expectHandoffBoundary(restored);
+  });
 });

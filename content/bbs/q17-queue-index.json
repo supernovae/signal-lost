@@ -1,0 +1,14 @@
+{
+  "kind": "message",
+  "id": "q17-queue-index",
+  "board": "forgotten-board",
+  "title": "Retained queue index",
+  "from": "RELAY 07",
+  "date": "UNDATED",
+  "body": [
+    "Dispatch order: 141 PACKET (P17), then 142 GHOST (G17).",
+    "The display above is sorted by delivery. See Departure ledger on THE FORGOTTEN BOARD for each handle’s last recorded presence.",
+    "Queue receipt: Q17; search batch identifier.",
+    "Type SEARCH <batch id> to look up the receipt’s batch."
+  ]
+}

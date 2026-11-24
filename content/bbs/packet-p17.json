@@ -1,0 +1,14 @@
+{
+  "kind": "message",
+  "id": "packet-p17",
+  "board": "forgotten-board",
+  "title": "141 / PACKET / P17",
+  "from": "PACKET",
+  "date": "DELIVERY INDEX 141",
+  "body": [
+    "Dispatch repair note",
+    "Held copies go in the queue with their signatures. If the relay drops the line again, check the receipt before sending another copy.",
+    "Acknowledge receipt. Even if it took a while.",
+    "Signed P17"
+  ]
+}

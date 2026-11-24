@@ -1,0 +1,13 @@
+{
+  "kind": "message",
+  "id": "q17-batch-located",
+  "board": "deep-field",
+  "title": "Q17 batch located",
+  "from": "RELAY 07",
+  "date": "UNDATED",
+  "body": [
+    "Q17 matches both signed notes.",
+    "Open BOARDS to choose Q17 HEADER DESK for ECHO’s dispatch records or Q17 CUSTODY DESK for SYSOP’s sealed originals."
+  ],
+  "eventOnly": true
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "profile",
+  "id": "packet-profile",
+  "bbs": "deep-field",
+  "characterId": "packet",
+  "handle": "PACKET",
+  "bio": [
+    "Fictional historical record for a former dispatch maintainer. Last recorded board presence 2001-03-02.",
+    "Signed note P17 is filed in Delivered messages and queue index on THE FORGOTTEN BOARD."
+  ]
+}

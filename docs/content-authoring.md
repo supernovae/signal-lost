@@ -81,6 +81,16 @@ A BBS `message-board` can declare `access` with a minimum `level` ID and a `deni
 The listing stays visible, and the BBS displays that line when the player tries to enter below
 the required level.
 
+A message board's optional `requires` condition controls whether it appears in BOARDS and
+can be opened. Its optional `check` adds a typed `SEARCH` or `SUBMIT` command with a
+single case-insensitive `answer` token. The player must read each `evidenceMessageIds`
+message from a public thread on the same endpoint. Write the command instructions in
+`prompt` and use `missingEvidence` and `incorrect` to direct retries to the evidence.
+The command works from that board and its threads. Set `responseMessageId` to a message
+owned by the endpoint with `eventOnly: true`. Give it one exclusive board check and one
+event that posts it with `when` set to its own `bbs-read:<message id>` fact. The first
+success records that read. Later successes show the same message again.
+
 In `content/capabilities/`, give each capability an `id`, a `kind`, an existing saved `fact`, and
 a `target`. Use `kind: "research"` with a target such as
 `{ "kind": "archive", "id": "archive.example" }` or `{ "kind": "board", "id": "board.example" }`.

@@ -512,6 +512,8 @@ describe('diagnostics', () => {
     ['linecheck', 'clueMessageId', 'relay-receipt', 'clueMessageId', 'public thread clue'],
     ['linecheck', 'clueMessageId', 'community.second-line', 'clueMessageId', 'public thread clue'],
     ['linecheck', 'command', 'hElP', 'command', 'reserved or duplicate'],
+    ['linecheck', 'command', 'sEaRcH', 'command', 'reserved or duplicate'],
+    ['linecheck', 'command', 'sUbMiT', 'command', 'reserved or duplicate'],
   ])('rejects invalid BBS %s %s references', (record, key, value, field, message) => {
     const files = readContentDir('content');
     const file = `content/bbs/${record}.json`;
@@ -790,6 +792,20 @@ describe('access and capability diagnostics', () => {
   it('requires a board-target research fact to raise access across its threshold', () => {
     const declaration = { ...research, target: { kind: 'board', id: board.id } };
     expect(loadContent({ ...files, [researchFile]: declaration }).errors).toEqual([]);
+    const hidden = { ...board, requires: 'completed:episode.000' };
+    expectError(
+      { [researchFile]: declaration, [boardFile]: hidden },
+      researchFile,
+      'target',
+      'must unlock BBS message board',
+    );
+    expect(
+      loadContent({
+        ...files,
+        [researchFile]: { ...declaration, context: ['completed:episode.000'] },
+        [boardFile]: hidden,
+      }).errors,
+    ).toEqual([]);
     expectError(
       {
         [researchFile]: declaration,
@@ -1134,5 +1150,141 @@ describe('entry points', () => {
         build: { write: false },
       }),
     ).rejects.toThrow(/content\/transmissions\/t\.json: id:/);
+  });
+});
+
+describe('declarative BBS board checks', () => {
+  const boardFile = 'content/bbs/q17-header-desk.json';
+  const resultFile = 'content/bbs/q17-header-confirmation.json';
+  const eventFile = 'content/events/q17-header-confirmation.json';
+  const otherEndpoint = 'content/bbs/other-endpoint.json';
+  const pendingFiles = readContentDir('content');
+  const board = bbsMessageBoardSchema.parse(pendingFiles[boardFile]);
+  const check = board.check!;
+  const result = pendingFiles[resultFile] as Record<string, unknown>;
+  const event = pendingFiles[eventFile] as Record<string, unknown>;
+  const endpoint = {
+    ...bbsBoardSchema.parse(pendingFiles['content/bbs/deep-field.json']),
+    id: 'other-endpoint',
+  };
+
+  function boardError(overrides: Record<string, unknown>, field: string, message: string) {
+    expect(loadContent({ ...pendingFiles, ...overrides }).errors).toContainEqual({
+      file: boardFile,
+      field,
+      message: expect.stringContaining(message),
+    });
+  }
+
+  it('resolves a board visibility requirement', () => {
+    boardError(
+      { [boardFile]: { ...board, requires: 'flag:unknown-board-gate' } },
+      'requires',
+      'nothing grants',
+    );
+  });
+
+  it.each([
+    { evidence: [], field: 'check.evidenceMessageIds', message: 'Too small' },
+    {
+      evidence: ['q17-headers', 'q17-headers'],
+      field: 'check.evidenceMessageIds',
+      message: 'must be unique',
+    },
+    { evidence: ['missing'], field: 'check.evidenceMessageIds.0', message: 'unknown BBS message' },
+    { evidence: ['general'], field: 'check.evidenceMessageIds.0', message: 'unknown BBS message' },
+    {
+      evidence: ['relay-receipt'],
+      field: 'check.evidenceMessageIds.0',
+      message: 'public thread message',
+    },
+    {
+      evidence: ['q17-header-confirmation'],
+      field: 'check.evidenceMessageIds.0',
+      message: 'public thread message',
+    },
+  ])('rejects invalid evidence $evidence at $field', ({ evidence, field, message }) => {
+    boardError(
+      { [boardFile]: { ...board, check: { ...check, evidenceMessageIds: evidence } } },
+      field,
+      message,
+    );
+  });
+
+  it.each(['', ' ', 'TWO TOKENS'])('rejects invalid answer token %j', (answer) => {
+    boardError(
+      { [boardFile]: { ...board, check: { ...check, answer } } },
+      'check.answer',
+      'one nonblank answer token',
+    );
+  });
+
+  it('requires evidence from the same endpoint even when the post is public', () => {
+    const ledger = 'content/bbs/forgotten-board.json';
+    const owner = bbsMessageBoardSchema.parse(pendingFiles[ledger]);
+    boardError(
+      { [otherEndpoint]: endpoint, [ledger]: { ...owner, bbs: endpoint.id } },
+      'check.evidenceMessageIds.0',
+      'public thread message on this endpoint',
+    );
+  });
+
+  it.each([{ response: 'q17-headers' }, { response: 'missing' }])(
+    'rejects $response as a check result',
+    ({ response }) => {
+      boardError(
+        { [boardFile]: { ...board, check: { ...check, responseMessageId: response } } },
+        'check.responseMessageId',
+        'event-only message on this endpoint',
+      );
+    },
+  );
+
+  it('rejects a result owned by another endpoint', () => {
+    boardError(
+      { [otherEndpoint]: endpoint, [resultFile]: { ...result, board: endpoint.id } },
+      'check.responseMessageId',
+      'event-only message on this endpoint',
+    );
+  });
+
+  it('rejects a result reused by another board check', () => {
+    boardError(
+      { 'content/bbs/another-desk.json': { ...board, id: 'another-desk' } },
+      'check.responseMessageId',
+      'exactly one board check',
+    );
+  });
+
+  it.each([
+    { event: { ...event, when: 'flag:deferred-batch-located' }, name: 'an early publication' },
+    {
+      event: { ...event, when: { any: [event['when'], 'flag:deferred-batch-located'] } },
+      name: 'an alternate trigger',
+    },
+    {
+      event: { ...event, effects: [{ kind: 'grant-flag', flag: 'deferred-headers-verified' }] },
+      name: 'a missing publication',
+    },
+  ])('rejects $name of the response', ({ event: malformed }) => {
+    boardError(
+      { [eventFile]: malformed },
+      'check.responseMessageId',
+      'one bulletin posting triggered by its own BBS read',
+    );
+  });
+
+  it('rejects a second event posting the same response', () => {
+    boardError(
+      {
+        'content/events/early-copy.json': {
+          ...event,
+          id: 'early-copy',
+          when: 'flag:deferred-batch-located',
+        },
+      },
+      'check.responseMessageId',
+      'one bulletin posting triggered by its own BBS read',
+    );
   });
 });

@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "q17-comparison-thread",
+  "board": "q17-custody-desk",
+  "title": "Dispatch comparison",
+  "order": 1,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "q17-comparison"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "kind": "message",
+  "id": "q17-custody-confirmation",
+  "board": "deep-field",
+  "title": "Q17 custody confirmation",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "body": [
+    "DEFERRED VERIFIED / CUSTODY AUDIT",
+    "P17 AND G17 DISPATCH COPIES MATCH SEALED ORIGINALS. RELEASE AFTER CHECKPOINT 121 RECORDED. ORIGINALS REMAIN READ-ONLY.",
+    "ECHO: Delivery is not authorship. I had those reversed."
+  ],
+  "eventOnly": true,
+  "presentation": "recovered"
+}

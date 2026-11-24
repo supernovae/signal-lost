@@ -226,6 +226,78 @@ test('posts a new bulletin after reading the relay note', async ({ page }) => {
   await expect(button('[READ 2] Relay desk receipt [READ]')).toBeVisible();
 });
 
+test('verifies Q17 from its headers and retains the confirmation after reload', async ({
+  page,
+}) => {
+  await seedSaveOnce(page, completedV1);
+  const button = (name: string) => page.getByRole('button', { name, exact: true });
+  const log = page.getByRole('log');
+  const proof = page.getByRole('button', {
+    name: /^\[READ \d+\] Q17 header confirmation \[READ\]$/,
+  });
+  const correction = 'Delivery is not authorship. I had those reversed.';
+
+  async function signIn() {
+    await joinWithEnter(page);
+    await connect(page).click();
+    await button('USE DESIGNATION (OBS-02FF)').click();
+    await expect(log.locator('.system').last()).toContainText('DEEP FIELD MAIN MENU');
+  }
+
+  async function expectSavedProof() {
+    const saved = await page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
+    expect(JSON.parse(saved!)).toMatchObject({
+      flags: expect.arrayContaining(['deferred-verified', 'deferred-headers-verified']),
+      bbsReadMessages: expect.arrayContaining(['message:q17-header-confirmation']),
+      events: { bulletins: ['q17-batch-located', 'q17-header-confirmation'] },
+    });
+  }
+
+  await page.goto('./');
+  await signIn();
+  await button('BOARDS').click();
+  await expect(button('Q17 HEADER DESK')).toHaveCount(0);
+  await button('THE FORGOTTEN BOARD').click();
+  await button('Delivered messages and queue index').click();
+  await expect(log).toContainText('Queue receipt: Q17; search batch identifier.');
+  await typeCommand(page, 'BBS>', 'SEARCH Q17');
+  await expect(log).toContainText('Q17 batch located');
+  await button('BACK').click();
+  await button('Departure ledger').click();
+  await expect(log).toContainText('GHOST last present on 2001-03-03 | checkpoint 121.');
+  await button('BACK').click();
+  await button('BACK').click();
+  await button('Q17 HEADER DESK').click();
+  await button('Q17 message headers').click();
+  await expect(log).toContainText('P17 / PACKET | WRITTEN 2001-03-01 18:10 | DELIVERED 141');
+  await typeCommand(page, 'BBS>', 'SUBMIT DEFERRED');
+  await expect(log.locator('.system').last()).toContainText(
+    'Read Departure ledger on THE FORGOTTEN BOARD, then Q17 message headers and Queue policy on this desk.',
+  );
+  await expect(log).not.toContainText('DEFERRED VERIFIED / HEADER ANALYSIS');
+  await button('BACK').click();
+  await button('Queue policy').click();
+  await expect(log).toContainText('A migration-held record released unchanged is DEFERRED.');
+  await typeCommand(page, 'BBS>', 'SUBMIT DEFERRED');
+  await expect(log.locator('.ai-fictional').last()).toContainText(
+    'DEFERRED VERIFIED / HEADER ANALYSIS',
+  );
+  await expect(log.locator('.ai-fictional').last()).toContainText(correction);
+  await expectSavedProof();
+
+  await page.reload();
+  await signIn();
+  await expect(log.locator('.system').last()).toContainText('Q17 PROOF: DEFERRED VERIFIED');
+  await button('MESSAGES').click();
+  await expect(proof).toBeVisible();
+  await proof.click();
+  await expect(log.locator('.ai-fictional').last()).toContainText(
+    'DEFERRED VERIFIED / HEADER ANALYSIS',
+  );
+  await expect(log.locator('.ai-fictional').last()).toContainText(correction);
+  await expectSavedProof();
+});
+
 for (const input of ['keyboard', 'pointer'] as const) {
   test(`SECOND LINE denies and grants access through ${input} controls`, async ({ page }) => {
     const beforeRelay = JSON.parse(completedV1) as { puzzles: string[]; flags: string[] };

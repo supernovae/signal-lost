@@ -4,20 +4,14 @@ import { createOpening } from './app/opening.ts';
 import { applyPreferences, effectiveMotion, openSettings } from './app/settings.ts';
 import { createSceneManager } from './app/scenes.ts';
 import { buildTools } from './app/tools.ts';
-import { getBbsOffer } from './bbs/bbs.ts';
-import { createBbsScene } from './bbs/bbs-view.ts';
 import { bbsCopy, fill } from './bbs/copy.ts';
-import { createBbsDoorSession } from './bbs/door-session.ts';
-import { createBbsProgress } from './bbs/progress.ts';
+import { getBbsOffer } from './bbs/offer.ts';
 import { bbsThemeStyles } from './bbs/themes.ts';
 import { loadBundledContent } from './content/browser.ts';
 import type { Episode } from './content/schema.ts';
-import { createDoorHost } from './doors/host.ts';
-import { createDoorRegistry } from './doors/registry.ts';
 import { createAudio } from './audio/audio.ts';
 import { createDialogueSources } from './narrative/dialogue.ts';
 import { deriveAccessLevel } from './progress/access.ts';
-import { settleEvents } from './progress/events.ts';
 import { openSaveSession } from './progress/save.ts';
 import { createGame } from './puzzle/game.ts';
 import { createRenderHost } from './render/host.ts';
@@ -27,7 +21,6 @@ import './style.css';
 const root = document.querySelector<HTMLElement>('#app')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#viewscreen')!;
 const { content } = loadBundledContent();
-const doors = createDoorRegistry(content.doors);
 const screen = (id: string): readonly string[] =>
   content.screens.find((s) => s.id === id)?.lines ?? [];
 
@@ -133,36 +126,53 @@ const showHub = (): void => {
   const offer = getBbsOffer(content, game.facts());
   if (offer) lines.push(offer.board.notice);
   resetNoticePending = false;
-  scenes.show(
-    createHub(root, lines, () => {
-      const tools = buildTools(toolContext);
-      if (!offer) return tools;
-      return [
-        ...tools,
-        {
-          id: 'connect',
-          label: 'CONNECT',
-          run() {
-            const snapshot = () => data;
-            const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
-            const host = createDoorHost(doors, data, session.persist, settle);
-            const progress = createBbsProgress(data, settle, session.persist);
-            scenes.show(
-              createBbsScene(
-                root,
-                createBbsDoorSession(offer, snapshot, host, sayOnBbs),
-                snapshot,
-                progress.apply,
-                progress.connect,
-                showSettings,
-                showHub,
-              ),
-            );
-          },
+  let active = true;
+  let connecting = false;
+  const hub = createHub(root, lines, () => {
+    const tools = buildTools(toolContext);
+    if (!offer) return tools;
+    return [
+      ...tools,
+      {
+        id: 'connect',
+        label: 'CONNECT',
+        run(terminal) {
+          if (connecting) return;
+          connecting = true;
+          terminal.print([`CONNECTING TO ${offer.board.title}.`], 'dim');
+          void import('./bbs/connection.ts').then(
+            ({ createBbsConnection }) => {
+              if (!active) return;
+              scenes.show(
+                createBbsConnection({
+                  root,
+                  offer,
+                  content,
+                  session,
+                  say: sayOnBbs,
+                  onSettings: showSettings,
+                  onDisconnect: showHub,
+                }),
+              );
+            },
+            () => {
+              if (!active) return;
+              connecting = false;
+              terminal.print(['CONNECTION UNAVAILABLE.'], 'alert');
+              terminal.focus();
+            },
+          );
         },
-      ];
-    }),
-  );
+      },
+    ];
+  });
+  scenes.show({
+    mount: hub.mount,
+    dispose() {
+      active = false;
+      hub.dispose();
+    },
+  });
 };
 const toolContext = {
   content,

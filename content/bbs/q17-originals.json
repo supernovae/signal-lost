@@ -1,0 +1,16 @@
+{
+  "kind": "message",
+  "id": "q17-originals",
+  "board": "q17-custody-desk",
+  "title": "Sealed originals on file",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "body": [
+    "P17 | PACKET | repair note | seal intact.",
+    "Held copies go in the queue with their signatures. If the relay drops the line again, check the receipt before sending another copy.",
+    "Acknowledge receipt. Even if it took a while.",
+    "G17 | GHOST | preservation note | seal intact.",
+    "Keep the signature with the note when you move it. Otherwise the copy remembers the words and forgets whose they were.",
+    "Both sealed originals remain read-only."
+  ]
+}

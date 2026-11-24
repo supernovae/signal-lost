@@ -1,0 +1,14 @@
+{
+  "kind": "message",
+  "id": "q17-headers",
+  "board": "q17-header-desk",
+  "title": "P17 and G17 dispatch headers",
+  "from": "RELAY 07",
+  "date": "UNDATED",
+  "body": [
+    "P17 / PACKET | WRITTEN 2001-03-01 18:10 | DELIVERED 141",
+    "G17 / GHOST | WRITTEN 2001-03-02 09:20 | DELIVERED 142",
+    "Q17 / migration hold | RELEASED AFTER CHECKPOINT 121 | SEALED COPY UNCHANGED",
+    "Compare the dates and sequence numbers with Departure ledger on THE FORGOTTEN BOARD."
+  ]
+}

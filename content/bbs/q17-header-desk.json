@@ -1,0 +1,19 @@
+{
+  "kind": "message-board",
+  "id": "q17-header-desk",
+  "bbs": "deep-field",
+  "title": "Q17 HEADER DESK",
+  "description": [
+    "ECHO preserved two accounts of the dispatch. Compare the headers and queue policy with Departure ledger on THE FORGOTTEN BOARD."
+  ],
+  "requires": "flag:deferred-batch-located",
+  "check": {
+    "verb": "SUBMIT",
+    "answer": "DEFERRED",
+    "evidenceMessageIds": ["q17-departure-ledger", "q17-headers", "q17-queue-policy"],
+    "prompt": "Type SUBMIT <finding> after checking when the notes were written and delivered.",
+    "missingEvidence": "Read Departure ledger on THE FORGOTTEN BOARD, then Q17 message headers and Queue policy on this desk.",
+    "incorrect": "Compare WRITTEN with DELIVERED and check both against the departure ledger. Use the classification defined by Queue policy.",
+    "responseMessageId": "q17-header-confirmation"
+  }
+}

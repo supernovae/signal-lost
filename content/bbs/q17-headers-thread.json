@@ -1,0 +1,13 @@
+{
+  "kind": "thread",
+  "id": "q17-headers-thread",
+  "board": "q17-header-desk",
+  "title": "Q17 message headers",
+  "order": 0,
+  "messages": [
+    {
+      "kind": "message",
+      "id": "q17-headers"
+    }
+  ]
+}
