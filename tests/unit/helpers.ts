@@ -6,6 +6,7 @@ export function emptyContent(): Content {
     puzzles: [],
     transmissions: [],
     archives: [],
+    bbs: [],
     characters: [],
     sectors: [],
     artifacts: [],

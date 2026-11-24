@@ -4,6 +4,8 @@ import { createOpening } from './app/opening.ts';
 import { applyPreferences, effectiveMotion, openSettings } from './app/settings.ts';
 import { createSceneManager } from './app/scenes.ts';
 import { buildTools } from './app/tools.ts';
+import { getBbsOffer } from './bbs/bbs.ts';
+import { createBbsScene } from './bbs/bbs-view.ts';
 import { loadBundledContent } from './content/browser.ts';
 import type { Episode } from './content/schema.ts';
 import { createAudio } from './audio/audio.ts';
@@ -102,9 +104,39 @@ const scenes = createSceneManager();
 const motionAllowed = (): boolean => effectiveMotion(data.preferences, systemReduced);
 let resetNoticePending = session.status === 'reset';
 const showHub = (): void => {
-  const lines = resetNoticePending ? [...screen('boot'), ...screen('save-reset')] : screen('boot');
+  const lines = [...screen('boot')];
+  if (resetNoticePending) lines.push(...screen('save-reset'));
+  const offer = getBbsOffer(content, game.facts());
+  if (offer) lines.push(offer.board.notice);
   resetNoticePending = false;
-  scenes.show(createHub(root, lines, () => buildTools(toolContext)));
+  scenes.show(
+    createHub(root, lines, () => {
+      const tools = buildTools(toolContext);
+      if (!offer) return tools;
+      return [
+        ...tools,
+        {
+          id: 'connect',
+          label: 'CONNECT',
+          run() {
+            scenes.show(
+              createBbsScene(
+                root,
+                offer,
+                { ...data.profile, readMessages: data.bbsReadMessages },
+                (effect) => {
+                  if ('handle' in effect) data.profile.handle = effect.handle;
+                  else data.bbsReadMessages.push(effect.readKey);
+                  session.persist();
+                },
+                showHub,
+              ),
+            );
+          },
+        },
+      ];
+    }),
+  );
 };
 const toolContext = {
   content,

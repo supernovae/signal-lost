@@ -1,22 +1,9 @@
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
 import { freshSave } from '../../src/progress/save.ts';
-import { completeEpisode } from './helpers.ts';
+import { completeEpisode, SAVE_KEY, seedSaveOnce } from './helpers.ts';
 
-const SAVE_KEY = 'signal-lost.save';
 const resetNotice = 'Your saved progress could not be loaded and was reset.';
-
-async function seedSaveOnce(page: Page, value: string): Promise<void> {
-  await page.addInitScript(
-    ({ key, text }) => {
-      const marker = 'progress-test-save-seeded';
-      if (sessionStorage.getItem(marker)) return;
-      localStorage.setItem(key, text);
-      sessionStorage.setItem(marker, '1');
-    },
-    { key: SAVE_KEY, text: value },
-  );
-}
 
 async function join(page: Page): Promise<void> {
   await page.goto('./');

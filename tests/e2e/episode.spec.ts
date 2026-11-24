@@ -27,6 +27,14 @@ test('a new player can finish Episode 000 through the real interface', async ({ 
   // Later tools are not offered yet.
   await expect(page.getByRole('button', { name: /DECODER/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /INQUIRY/ })).toHaveCount(0);
+  const connect = page.getByRole('button', { name: /\] CONNECT$/ });
+  await expect(connect).toHaveCount(0);
+  await expect(log).not.toContainText('INCOMING CONNECTION: DEEP FIELD');
+  const prompt = page.getByLabel('OBS>');
+  await prompt.fill('CONNECT');
+  await prompt.press('Enter');
+  await expect(log).toContainText('UNKNOWN COMMAND: CONNECT.');
+  await expect(page.getByLabel('BBS>')).toHaveCount(0);
 
   // --- The Carrier ---
   await playCarrier(page);
@@ -86,8 +94,10 @@ test('a new player can finish Episode 000 through the real interface', async ({ 
   const text = await ending.innerText();
   expect(text.indexOf('The specification came later')).toBeLessThan(text.indexOf('RECOVERED'));
 
-  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'CONTINUE' }).click();
   await expect(page.getByLabel('OBS>')).toBeVisible();
+  await expect(log).toContainText('INCOMING CONNECTION: DEEP FIELD');
+  await expect(connect).toBeVisible();
 
   // --- Progress survives a reload, without replaying the ending ---
   await page.reload();

@@ -1,5 +1,19 @@
 import { expect, type Page } from '@playwright/test';
 
+export const SAVE_KEY = 'signal-lost.save';
+
+export async function seedSaveOnce(page: Page, value: string): Promise<void> {
+  await page.addInitScript(
+    ({ key, text }) => {
+      const marker = 'progress-test-save-seeded';
+      if (sessionStorage.getItem(marker)) return;
+      localStorage.setItem(key, text);
+      sessionStorage.setItem(marker, '1');
+    },
+    { key: SAVE_KEY, text: value },
+  );
+}
+
 /** Plays Episode 000 through the real interface, from the hub to the ending. */
 export async function completeEpisode(page: Page): Promise<void> {
   await page.getByRole('button', { name: /ANALYZER/ }).click();

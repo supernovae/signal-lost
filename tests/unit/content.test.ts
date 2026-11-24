@@ -84,6 +84,26 @@ const validFiles = (): Record<string, unknown> => ({
     body: [],
     ...META,
   },
+  'content/bbs/board.json': {
+    kind: 'board',
+    id: 'board',
+    title: 'Board',
+    requires: 'completed:e',
+    notice: 'Incoming',
+    banner: ['Connected'],
+    sysopGreeting: ['Welcome'],
+    archiveIds: ['shared'],
+  },
+  'content/bbs/message.json': {
+    kind: 'message',
+    id: 'post',
+    board: 'board',
+    title: 'Post',
+    from: 'A',
+    date: '2001-03-01',
+    body: ['Hello'],
+    ...META,
+  },
   'content/characters/echo.json': {
     id: 'echo',
     name: 'ECHO',
@@ -132,6 +152,7 @@ describe('schemas and loading', () => {
       'raster',
     ]);
     expect(content.screens[0]!.lines).toEqual(['hello']);
+    expect(content.bbs.map((entry) => entry.kind)).toEqual(['board', 'message']);
     expect(content.episodes[0]!.attribution).toBeUndefined();
     expect(content.sectors[0]!.attribution?.handle).toBe('a');
   });
@@ -159,6 +180,11 @@ describe('schemas and loading', () => {
       expect(good.errors).toEqual([]);
       expect(good.content.archives.map((a) => a.id)).toContain('shared');
       expect(good.manifest.entries.map((e) => e.id)).toContain('community.tx');
+      expect(good.manifest.entries).toContainEqual({
+        kind: 'bbs',
+        id: 'post',
+        file: 'content/bbs/message.json',
+      });
 
       writeFileSync(join(root, 'transmissions/broken.json'), '{ nope');
       const bad = loadContent(readContentDir(root));
@@ -200,6 +226,21 @@ describe('conditions', () => {
 });
 
 describe('diagnostics', () => {
+  it.each([
+    ['message', 'body', 'not a list', 'body', 'array'],
+    ['message', 'board', 'post', 'board', 'unknown BBS board'],
+    ['board', 'requires', 'completed:missing', 'requires', 'no episodes record'],
+    ['board', 'archiveIds', ['missing'], 'archiveIds.0', 'unknown archive'],
+    ['message', 'id', 'board', 'id', 'duplicate bbs id'],
+  ])('reports BBS %s %s errors with file and field', (kind, key, value, field, message) => {
+    const files = validFiles();
+    const file = `content/bbs/${kind}.json`;
+    files[file] = { ...(files[file] as Record<string, unknown>), [key]: value };
+    const error = firstError(files);
+    expect(error).toMatchObject({ file, field });
+    expect(error.message).toContain(message);
+  });
+
   it('reports invalid fields', () => {
     const files = validFiles();
     (files['content/transmissions/tx.json'] as { body: unknown }).body = 'not a list';

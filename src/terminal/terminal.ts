@@ -1,11 +1,13 @@
 export interface MenuItem {
-  key: string;
+  key?: string;
   label: string;
   run(): void;
 }
 
+type Tone = 'normal' | 'dim' | 'alert' | 'system' | 'history' | 'sysop';
+
 export interface Terminal {
-  print(lines: readonly string[], tone?: 'normal' | 'dim' | 'alert'): void;
+  print(lines: readonly string[], tone?: Tone): void;
   menu(items: readonly MenuItem[]): void;
   onCommand(handler: (command: string) => void): void;
   focus(): void;
@@ -16,7 +18,7 @@ export interface Terminal {
 }
 
 /** A retro terminal built from real DOM text, so it stays readable and accessible. */
-export function createTerminal(root: HTMLElement): Terminal {
+export function createTerminal(root: HTMLElement, promptLabel = 'OBS>'): Terminal {
   const element = document.createElement('section');
   element.className = 'terminal';
   element.setAttribute('aria-label', 'Terminal');
@@ -34,13 +36,13 @@ export function createTerminal(root: HTMLElement): Terminal {
   const form = document.createElement('form');
   form.className = 'terminal-prompt';
   const caret = document.createElement('label');
-  caret.textContent = 'OBS>';
+  caret.textContent = promptLabel;
   caret.htmlFor = 'terminal-input';
   const input = document.createElement('input');
   input.id = 'terminal-input';
   input.autocomplete = 'off';
   input.spellcheck = false;
-  input.setAttribute('autocapitalize', 'characters');
+  input.setAttribute('autocapitalize', promptLabel === 'OBS>' ? 'characters' : 'off');
   form.append(caret, input);
 
   const panel = document.createElement('section');
@@ -60,7 +62,7 @@ export function createTerminal(root: HTMLElement): Terminal {
     if (!command) return;
     const line = document.createElement('p');
     line.className = 'dim';
-    line.textContent = `OBS> ${command}`;
+    line.textContent = `${promptLabel} ${command}`;
     log.append(line);
     const match = items.find(
       (item) => item.key === command || item.label.toUpperCase() === command.toUpperCase(),
@@ -72,12 +74,16 @@ export function createTerminal(root: HTMLElement): Terminal {
 
   return {
     print(lines, tone = 'normal') {
+      const grouped = tone === 'system' || tone === 'history' || tone === 'sysop';
+      const target = grouped ? document.createElement('div') : log;
+      if (grouped) target.className = tone;
       for (const text of lines) {
         const line = document.createElement('p');
-        if (tone !== 'normal') line.className = tone;
+        if (!grouped && tone !== 'normal') line.className = tone;
         line.textContent = text || ' ';
-        log.append(line);
+        target.append(line);
       }
+      if (grouped) log.append(target);
       log.scrollTop = log.scrollHeight;
     },
     menu(next) {
@@ -86,7 +92,7 @@ export function createTerminal(root: HTMLElement): Terminal {
         ...next.map((item) => {
           const button = document.createElement('button');
           button.type = 'button';
-          button.textContent = `[${item.key}] ${item.label}`;
+          button.textContent = item.key ? `[${item.key}] ${item.label}` : item.label;
           button.addEventListener('click', () => {
             item.run();
             log.scrollTop = log.scrollHeight;

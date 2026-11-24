@@ -231,13 +231,80 @@ button:hover {
   text-transform: uppercase;
 }
 
-body[data-tool='open'] #viewscreen {
+body[data-tool='open'] #viewscreen,
+body[data-scene='bbs'] #viewscreen {
   display: none;
 }
 
 body[data-tool='open'] .terminal-log {
   flex: 0 0 16%;
   padding-right: 0;
+}
+
+body[data-scene='bbs'] .terminal-log {
+  flex: 1;
+  padding-right: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+body[data-scene='bbs'] .terminal-menu {
+  max-height: 32%;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+body[data-scene='bbs'] .terminal-prompt input {
+  text-transform: none;
+}
+
+body[data-scene='bbs'] .terminal :focus-visible {
+  outline-offset: 1px;
+}
+
+body[data-scene='bbs'] :is(.system, .history, .sysop) {
+  max-width: 76ch;
+  margin: 0.4rem 0 0.75rem;
+  padding-inline-start: 0.75rem;
+}
+
+body[data-scene='bbs'] :is(.system, .history, .sysop) > :first-child {
+  margin-bottom: 0.3rem;
+  font-weight: bold;
+}
+
+body[data-scene='bbs'] .system {
+  border-inline-start: 2px solid currentColor;
+}
+
+body[data-scene='bbs'] .history {
+  border-inline-start: 4px double currentColor;
+}
+
+body[data-scene='bbs'] .sysop {
+  border-inline-start: 2px dashed currentColor;
+  font-style: italic;
+}
+
+body[data-scene='bbs'] .tool-panel {
+  flex: 0 0 auto;
+}
+
+body[data-scene='bbs'] .bbs-handle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 4px;
+}
+
+body[data-scene='bbs'] .bbs-handle input {
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  background: #0009;
+  border: 1px solid var(--phosphor-dim);
+  font: inherit;
+  padding: 0.2rem 0.4rem;
 }
 
 .tool-panel {

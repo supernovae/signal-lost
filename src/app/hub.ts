@@ -20,6 +20,7 @@ export function createHub(
       terminal = active;
       active.print(boot);
       const refresh = (): void => {
+        if (terminal !== active) return;
         active.menu(
           tools().map((tool, index) => ({
             key: String(index + 1),
@@ -40,6 +41,7 @@ export function createHub(
     },
     dispose() {
       terminal?.dispose();
+      terminal = undefined;
     },
   };
 }
