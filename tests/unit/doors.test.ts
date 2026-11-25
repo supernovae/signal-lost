@@ -18,7 +18,8 @@ import { settleEvents } from '../../src/progress/events.ts';
 import { factsOf, freshSave, openSaveSession, writeSave } from '../../src/progress/save.ts';
 
 const { content } = loadContent(readContentDir('content'));
-const relay = content.doors.find(({ id }) => id === 'relay-trivia')!;
+const relay = content.doors.find((door) => door.kind === 'trivia' && door.id === 'relay-trivia')!;
+if (relay.kind !== 'trivia') throw new Error('Expected relay trivia');
 const reward = 'flag:relay-trivia-complete';
 const acknowledgement = 'RELAY DRILL: COMPLETE';
 const completed = 'completed:episode.000';
@@ -330,6 +331,54 @@ describe('BBS door recovery', () => {
     expect(storage.setItem).toHaveBeenCalledTimes(2);
     expect(JSON.parse(storage.value)).toEqual(proposed);
     expect(openBoard(storage).data).toEqual(live);
+  });
+
+  it('filters explicit rewards and commits the partial checkpoint and event together', async () => {
+    const { storage, data } = seedBoard();
+    writeSave(storage, data);
+    const entry = codeDoor('selective', {
+      ...counterDefinition(),
+      isComplete: undefined,
+      earnedRewards: ({ count }) =>
+        count > 0 ? ['flag:existing', 'flag:counted', 'flag:counted', 'flag:injected'] : [],
+    });
+    entry.metadata.rewards.push('flag:existing', 'flag:never-earned');
+    const events: NetworkEvent[] = [
+      {
+        id: 'partial-count',
+        when: 'flag:counted',
+        effects: [{ kind: 'grant-flag', flag: 'count-confirmed' }],
+      },
+    ];
+    const { host, data: live } = openBoard(storage, [entry], events);
+    const before = storage.value;
+    await host.launch('selective');
+    storage.setItem.mockClear();
+    storage.setItem.mockImplementationOnce(() => {
+      throw new Error('storage refused write');
+    });
+    expect(host.input('+')).toEqual({ kind: 'failure' });
+    expect(storage.value).toBe(before);
+    expect(live).toEqual(data);
+    const proposed = JSON.parse(storage.setItem.mock.calls[0]![1]);
+    expect(proposed.flags).toEqual(['existing', 'counted', 'count-confirmed']);
+    expect(proposed.events).toEqual({ fired: ['partial-count'], bulletins: [] });
+    expect(JSON.parse(proposed.doorState.selective)).toEqual({ version: 1, payload: { count: 1 } });
+
+    await host.launch('selective');
+    expect(host.input('+').kind).toBe('screen');
+    expect(JSON.parse(storage.value)).toEqual(proposed);
+    const reopened = openBoard(storage, [entry], events);
+    expect(await reopened.host.launch('selective')).toMatchObject({
+      screen: { lines: ['COUNT 1'] },
+    });
+    expect(reopened.host.input('+').kind).toBe('screen');
+    expect(reopened.host.exit().kind).toBe('exit');
+    expect(openBoard(storage).data).toMatchObject({
+      flags: proposed.flags,
+      events: proposed.events,
+      doorState: { selective: { version: 1, payload: { count: 2 } } },
+    });
   });
 
   it.each([

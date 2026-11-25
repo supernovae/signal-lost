@@ -986,6 +986,124 @@ describe('the Q17 investigation', () => {
   );
 
   it.each(Object.values(desk))(
+    'opens and restores the training shelf after $title',
+    async (route) => {
+      const journey = start(false);
+      const openCommand = 'OPEN forgotten-archive';
+      const learnedFlag = 'spool-02-order-learned';
+      const order = 'SEAL / ROUTE / ACK';
+      const inspectFirst = 'Inspect all three training fragments before recording the procedure.';
+
+      async function doorDirectory(session: ReturnType<typeof sessionData>) {
+        const { data, persist } = session;
+        const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
+        const host = createDoorHost(createDoorRegistry(content.doors), data, persist, settle);
+        const progress = createBbsProgress(data, settle, persist);
+        const bbs = createBbsDoorSession(getBbsOffer(content, factsOf(data))!, () => data, host);
+        async function run(command: string) {
+          const result = (await bbs.dispatch(command))!;
+          if (result.effect) expect(progress.apply(result.effect)).toBe(true);
+          return lines(result);
+        }
+        await run('CONNECT');
+        await run('DESIGNATION');
+        await run('DOORS');
+        return { bbs, run, commands: () => bbs.screen().actions.map(({ command }) => command) };
+      }
+
+      async function expectClosed() {
+        const directory = await doorDirectory(journey);
+        expect(directory.commands()).not.toContain(openCommand);
+        expect(await directory.run(openCommand)).toContain('DOOR UNAVAILABLE.');
+        expect(directory.bbs.screen().phase).toBe('doors');
+      }
+
+      await expectClosed();
+      discover(journey);
+      await expectClosed();
+      gather(journey, route);
+      await expectClosed();
+      expect(noWrite(journey, 'SUBMIT IMPERSONATED').join(' ')).toContain(route.retry);
+      await expectClosed();
+      submit(journey, route);
+      expect(journey.data.flags.filter((flag) => flag.startsWith('deferred-'))).toEqual([
+        'deferred-batch-located',
+        route.flag,
+        'deferred-verified',
+      ]);
+
+      const initial = await doorDirectory(journey);
+      expect(initial.commands()).toContain(openCommand);
+      expect(await initial.run(openCommand)).toContain('ARCHIVE VESTIBULE');
+      expect(await initial.run('TRAINING SHELF')).toContain('TRAINING SHELF');
+      expect(await initial.run(order)).toContain(inspectFirst);
+      expect(factsOf(journey.data).has(`flag:${learnedFlag}`)).toBe(false);
+      await initial.run('INSPECT SEAL FRAGMENT');
+      await initial.run('INSPECT ROUTE FRAGMENT');
+
+      const partial = sessionData(journey.storage);
+      expect(partial.status).toBe('loaded');
+      expect(partial.data.doorState['forgotten-archive']).toEqual({
+        version: 1,
+        payload: {
+          locationId: 'training-shelf',
+          inspectedItemIds: ['route-fragment', 'seal-fragment'],
+          flags: [],
+          endingId: null,
+        },
+      });
+      const restored = await doorDirectory(partial);
+      expect(await restored.run(openCommand)).toContain('TRAINING SHELF');
+      expect(await restored.run('SEAL / ACK / ROUTE')).toContain(
+        'ACK is missing the destination receipt.',
+      );
+      expect(await restored.run(order)).toContain(inspectFirst);
+      expect(restored.commands()).not.toContain('NOTEBOOK');
+      expect(factsOf(partial.data).has(`flag:${learnedFlag}`)).toBe(false);
+      const fragmentReads = [
+        ['SEAL', 'SEAL fixes an immutable original'],
+        ['ROUTE', 'ROUTE requires the seal reference'],
+        ['ACK', 'ACK requires the destination receipt'],
+      ];
+      for (const [command, text] of fragmentReads) {
+        const inspect = `INSPECT ${command} FRAGMENT`;
+        const fragment = await restored.run(inspect);
+        expect(fragment.join(' ')).toContain(text);
+        expect(await restored.run(inspect)).toEqual(fragment);
+      }
+      expect(factsOf(partial.data).has(`flag:${learnedFlag}`)).toBe(false);
+      expect(await restored.run(order)).toContain(
+        'PROCEDURE LEARNED. The training notebook is available.',
+      );
+      expect(factsOf(partial.data).has(`flag:${learnedFlag}`)).toBe(true);
+      expect(
+        JSON.parse(journey.storage.value!).flags.filter((flag: string) => flag === learnedFlag),
+      ).toEqual([learnedFlag]);
+      expect(partial.data.flags.some((flag) => flag.startsWith('forgotten-archive-'))).toBe(false);
+      expect(await restored.run('NOTEBOOK')).toContain(`TRAINING NOTEBOOK: ${order}.`);
+      const menu = await restored.run('EXIT');
+      expect(menu).toContain('DEEP FIELD MAIN MENU');
+      expect(restored.bbs.screen().phase).toBe('menu');
+
+      const afterExit = sessionData(journey.storage);
+      expect(afterExit.status).toBe('loaded');
+      expect(afterExit.data.flags).toEqual([...journey.data.flags, learnedFlag]);
+      expect(afterExit.data.episodes).toEqual(journey.data.episodes);
+      expect(afterExit.data.locations).toEqual(journey.data.locations);
+      const reopened = await doorDirectory(afterExit);
+      await reopened.run(openCommand);
+      expect(await reopened.run('VESTIBULE')).toContain('ARCHIVE VESTIBULE');
+      expect(await reopened.run('NOTEBOOK')).toContain(`TRAINING NOTEBOOK: ${order}.`);
+      expect(factsOf(afterExit.data)).toEqual(
+        new Set([...factsOf(journey.data), `flag:${learnedFlag}`]),
+      );
+      expect([...menu, ...(await reopened.run('EXIT'))].join(' ')).not.toMatch(
+        /restored|restoration|maintenance annex|chapter complete/i,
+      );
+    },
+  );
+
+  it.each(Object.values(desk))(
     'exposes only navigation and evidence actions on $board',
     (route) => {
       const journey = start();

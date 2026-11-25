@@ -30,7 +30,7 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 
 ## Content pipeline
 
-`loadContent` validates a map of file paths to parsed JSON, and never throws for bad content. It returns typed content, errors with file and field, and a manifest. The browser bundles `content/**/*.json` through `import.meta.glob`. `scripts/content-plugin.ts` runs the same validation in `npm run build`, fails on errors, and emits `content-manifest.json` with a content version hash. `npm run content:validate` is the same check from the command line.
+`loadContent` validates a map of file paths to parsed JSON, and never throws for bad content. It returns typed content, errors with file and field, and a manifest. In development the browser loads `content/**/*.json` through `import.meta.glob` and validates it at startup. In production `scripts/content-plugin.ts` runs the same validation during `npm run build`, fails on errors, and supplies the normalized content to the browser entry. It also emits `content-manifest.json` with a content version hash. `npm run content:validate` is the same check from the command line.
 
 ## Network events and dialogue
 
@@ -55,9 +55,11 @@ line IDs for dialogue selection. Progress transitions depend on facts and declar
 
 ## How a door runs
 
-The descriptor declares the door's ID, name, description, author attribution, version, entry condition, rewards and return destination. Each implementation supplies a saved-state schema and a completion rule. The lifecycle launches a fresh visit or restores a checkpoint, handles input, saves its state as JSON, and handles exit. Callbacks receive a read-only fact query and work with state local to their visit. The BBS renders their screen text and commands in the shared terminal. [Door contract](../src/doors/contract.ts) · [BBS routing](../src/bbs/door-session.ts)
+The descriptor declares the door's ID, name, description, author attribution, version, entry condition, rewards and return destination. Each implementation supplies a saved-state schema and either Boolean completion or an explicit list of earned rewards. Boolean completion grants every declared reward. For an explicit list, the host accepts only declared facts and grants each fact once. The lifecycle launches a fresh visit or restores a checkpoint, handles input, saves its state as JSON, and handles exit. Callbacks receive a read-only fact query and work with state local to their visit. The BBS renders their screen text and commands in the shared terminal. [Door contract](../src/doors/contract.ts) · [BBS routing](../src/bbs/door-session.ts)
 
 The host checks entry requirements and reads the slot keyed by the selected door ID. A missing slot, version mismatch or invalid payload starts a fresh visit. Each successful input or exit writes the validated checkpoint and any newly earned declared rewards together. The BBS evaluates board status conditions against those saved facts. EXIT returns to the signed-in main menu. A lifecycle, module-load or persistence failure also returns there with the board's error message and the previous save intact. [Door host](../src/doors/host.ts)
+
+An adventure checkpoint stores its location, inspected items, local flags and chosen ending. The ending latches for that slot. If the slot is discarded, a fresh visit can choose another ending, so the save may hold both global reward facts. [Adventure lifecycle](../src/doors/adventure.ts)
 
 ## Determinism and tests
 

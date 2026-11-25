@@ -1,10 +1,11 @@
-import { formatErrors, loadContent, type LoadResult } from './validate.ts';
+import type { Content } from './schema.ts';
+import { formatErrors, loadContent } from './validate.ts';
 
 const modules = import.meta.glob('/content/**/*.json', { eager: true, import: 'default' });
 
-/** The bundled content. The build has already rejected invalid content. */
-export function loadBundledContent(): LoadResult {
+/** Loads and validates authored JSON in development. Vite supplies validated content in builds. */
+export function loadBundledContent(): Content {
   const result = loadContent(modules);
   if (result.errors.length > 0) throw new Error(formatErrors(result.errors));
-  return result;
+  return result.content;
 }

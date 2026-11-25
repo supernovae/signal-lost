@@ -20,7 +20,7 @@ import './style.css';
 
 const root = document.querySelector<HTMLElement>('#app')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#viewscreen')!;
-const { content } = loadBundledContent();
+const content = loadBundledContent();
 const screen = (id: string): readonly string[] =>
   content.screens.find((s) => s.id === id)?.lines ?? [];
 

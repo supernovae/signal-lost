@@ -22,22 +22,35 @@ interface DoorStep<State> {
 }
 
 /** Callbacks are synchronous. Working state is local to the visit, and saved JSON to the ID. */
-export interface DoorDefinition<State, Saved extends DoorPayload> {
+export type DoorDefinition<State, Saved extends DoorPayload> = {
   saveState: z.ZodType<Saved>;
   launch(progress: DoorProgress): DoorStep<State>;
   restore(saved: Saved, progress: DoorProgress): DoorStep<State>;
   input(state: State, command: string, progress: DoorProgress): DoorStep<State>;
   exit(state: State, progress: DoorProgress): undefined;
   save(state: State, progress: DoorProgress): Saved;
-  /** The host selects and applies the registered rewards when this returns true. */
-  isComplete(saved: Saved, progress: DoorProgress): boolean;
-}
+} & (
+  | {
+      /** The host applies all registered rewards when this returns true. */
+      isComplete(saved: Saved, progress: DoorProgress): boolean;
+      earnedRewards?: never;
+    }
+  | {
+      isComplete?: never;
+      earnedRewards(saved: Saved, progress: DoorProgress): readonly string[];
+    }
+);
+
+type DoorCheckpoint = { payload: DoorPayload } & (
+  | { complete: boolean; earnedRewards?: never }
+  | { complete?: never; earnedRewards: readonly string[] }
+);
 
 export interface RunningDoor {
   readonly screen: DoorScreen;
   input(command: string, progress: DoorProgress): DoorScreen;
   exit(progress: DoorProgress): void;
-  checkpoint(progress: DoorProgress): { payload: DoorPayload; complete: boolean };
+  checkpoint(progress: DoorProgress): DoorCheckpoint;
 }
 
 export interface DoorLifecycle {
@@ -66,7 +79,9 @@ export function defineDoor<State, Saved extends DoorPayload>(
       checkpoint(progress) {
         const saved = definition.saveState.parse(json.parse(definition.save(state, progress)));
         const payload = json.parse(saved);
-        return { payload, complete: definition.isComplete(saved, progress) };
+        return definition.earnedRewards
+          ? { payload, earnedRewards: definition.earnedRewards(saved, progress) }
+          : { payload, complete: definition.isComplete(saved, progress) };
       },
     };
   }

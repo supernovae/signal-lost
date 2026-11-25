@@ -126,6 +126,28 @@ repeatable, unconditional BBS line. Static `sysopGreeting` text remains availabl
 endpoints and as a fallback. A BBS profile's `characterId` offers TALK when the character has BBS
 lines. Conversation is scripted, and facts and unlocks are independent of the lines displayed.
 
+## BBS adventures
+
+Add an adventure as a JSON file under `content/doors/` with `kind` set to `adventure`.
+The global `requires` condition controls which signed-in players can open the door.
+Set `startLocationId`, give each location a title and description, and list its actions
+in display order. Each action has a command and button label. Commands within a location
+must be distinct after normalizing case and whitespace, including around slashes. The host
+reserves EXIT and supplies it on every screen.
+
+Use `move` to connect locations, `inspect` to display and record evidence, `talk` to select
+the first matching dialogue variant, `show` to display text such as a notebook, `order` to
+submit an operation permutation, and `end` to choose a single ending. End each dialogue list
+with an unconditional variant. An order puzzle declares its required evidence, the inputs
+and outputs of each operation, missing-input responses, and a local success flag. Provide
+authored order actions with each operation exactly once per submission.
+
+Action and dialogue `when` conditions and `rewardRules` use local facts. `read:<id>` means
+an inspected item, `flag:<id>` a declared local milestone, and `completed:<id>` the chosen
+ending. List every global reward under `rewards` and provide a local rule for earning it.
+The loader checks references and walks reachable checkpoints, up to 4,096 states. Run
+`npm run content:validate` to check a new door. [Forgotten Archive](../content/doors/forgotten-archive.json)
+
 ## Other kinds of content
 
 | Directory               | Holds                                                                                                                   |

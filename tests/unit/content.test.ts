@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { build } from 'vite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, assert, describe, expect, it } from 'vitest';
 import { contentPlugin } from '../../scripts/content-plugin.ts';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
@@ -20,11 +20,14 @@ import { evaluate } from '../../src/content/conditions.ts';
 import { hashContent } from '../../src/content/manifest.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import {
+  adventureDoorSchema,
   bbsBoardSchema,
   bbsInterfaceSchema,
   bbsMessageBoardSchema,
   characterSchema,
   communitySchema,
+  type AdventureDoor,
+  type Content,
   type DoorMetadata,
   type TriviaDoor,
 } from '../../src/content/schema.ts';
@@ -177,6 +180,174 @@ function firstError(files: Record<string, unknown>) {
   expect(errors.length).toBeGreaterThan(0);
   return errors[0]!;
 }
+
+describe('adventure references', () => {
+  const file = 'content/doors/forgotten-archive.json';
+  const files = readContentDir('content');
+  const cases: [string, string, (door: AdventureDoor) => void][] = [
+    [
+      'startLocationId',
+      'missing-start',
+      (door) => {
+        door.startLocationId = 'missing-start';
+      },
+    ],
+    [
+      'locations.0.actions.0.toLocationId',
+      'missing-destination',
+      (door) => {
+        Object.assign(door.locations[0]!.actions[0]!, { toLocationId: 'missing-destination' });
+      },
+    ],
+    [
+      'locations.1.actions.0.itemId',
+      'missing-fragment',
+      (door) => {
+        Object.assign(door.locations[1]!.actions[0]!, { itemId: 'missing-fragment' });
+      },
+    ],
+    [
+      'orderPuzzles.0.requiredItemIds.0',
+      'missing-required-item',
+      (door) => {
+        door.orderPuzzles[0]!.requiredItemIds[0] = 'missing-required-item';
+      },
+    ],
+    [
+      'locations.0.actions.1.when.all.1.not',
+      'flag:missing-local-flag',
+      (door) => {
+        door.locations[0]!.actions[1]!.when = {
+          all: ['flag:order-learned', { not: 'flag:missing-local-flag' }],
+        };
+      },
+    ],
+    [
+      'orderPuzzles.0.successFlag',
+      'missing-success',
+      (door) => {
+        door.orderPuzzles[0]!.successFlag = 'missing-success';
+      },
+    ],
+    [
+      'locations.2.id',
+      'comparison-desk',
+      (door) => {
+        door.locations[0]!.actions[1]!.when = {
+          all: ['flag:order-learned', { not: 'flag:order-learned' }],
+        };
+      },
+    ],
+    [
+      'rewardRules.0.reward',
+      'flag:undeclared-reward',
+      (door) => {
+        door.rewardRules[0]!.reward = 'flag:undeclared-reward';
+      },
+    ],
+    [
+      'rewards.0',
+      'flag:spool-02-order-learned',
+      (door) => {
+        door.rewardRules.shift();
+      },
+    ],
+    [
+      'orderPuzzles.0.operations.1.inputs.0.token',
+      'missing-token',
+      (door) => {
+        door.orderPuzzles[0]!.operations[1]!.inputs[0]!.token = 'missing-token';
+      },
+    ],
+    [
+      'locations.1.actions.3.operationIds.2',
+      'route',
+      (door) => {
+        Object.assign(door.locations[1]!.actions[3]!, { operationIds: ['route', 'ack', 'route'] });
+      },
+    ],
+    [
+      'locations.1.actions.3.puzzleId',
+      'missing-puzzle',
+      (door) => {
+        Object.assign(door.locations[1]!.actions[3]!, { puzzleId: 'missing-puzzle' });
+      },
+    ],
+    [
+      'locations.1.actions.3.operationIds.2',
+      'missing-operation',
+      (door) => {
+        Object.assign(door.locations[1]!.actions[3]!, {
+          operationIds: ['route', 'ack', 'missing-operation'],
+        });
+      },
+    ],
+    [
+      'locations.3.actions.2.endingId',
+      'missing-ending',
+      (door) => {
+        Object.assign(door.locations[3]!.actions[2]!, { endingId: 'missing-ending' });
+      },
+    ],
+    [
+      'locations.2.actions.1.variants.1.when',
+      'unconditional',
+      (door) => {
+        const action = door.locations[2]!.actions[1]!;
+        if (action.kind !== 'talk') throw new Error('Expected dialogue');
+        action.variants[1]!.when = 'read:copy-scope';
+      },
+    ],
+    [
+      'locations.0.actions.1.command',
+      'EXIT',
+      (door) => {
+        door.locations[0]!.actions[1]!.command = ' exit  ';
+      },
+    ],
+    [
+      'locations.1.actions.4.command',
+      'ROUTE / ACK / SEAL',
+      (door) => {
+        door.locations[1]!.actions[4]!.command = ' route/ack  /  seal ';
+      },
+    ],
+    [
+      'items.5.id',
+      'seal-fragment',
+      (door) => {
+        door.items.push(door.items[0]!);
+      },
+    ],
+  ];
+
+  it.each(cases)('reports %s with %s', (field, id, mutate) => {
+    const door = adventureDoorSchema.parse(files[file]);
+    mutate(door);
+    expect(loadContent({ ...files, [file]: door }).errors).toContainEqual({
+      file,
+      field,
+      message: expect.stringContaining(id),
+    });
+  });
+
+  it('bounds state enumeration and reports the affected door and field', () => {
+    const door = adventureDoorSchema.parse(files[file]);
+    for (let i = 0; i < 13; i++) {
+      const id = `optional-${i}`;
+      door.items.push({ id, text: ['Optional note'] });
+      door.locations[0]!.actions.push({
+        kind: 'inspect',
+        command: `READ ${i}`,
+        label: id,
+        itemId: id,
+      });
+    }
+    expect(loadContent({ ...files, [file]: door }).errors).toEqual([
+      { file, field: 'locations', message: 'adventure exceeds 4096 reachable states' },
+    ]);
+  });
+});
 
 describe('schemas and loading', () => {
   it('accepts every kind, with and without attribution and provenance', () => {
@@ -1138,6 +1309,39 @@ describe('entry points', () => {
     const result = cli(root);
     expect(result.status).toBe(1);
     expect(result.output).toContain(`${DOOR_FILE}: questions.0.answer:`);
+  });
+
+  it('the build supplies all validated browser content and its manifest', async () => {
+    const expected = loadContent(readContentDir('content'));
+    expect(expected.errors).toEqual([]);
+    const result = await build({
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [contentPlugin()],
+      build: { write: false, lib: { entry: 'src/content/browser.ts', formats: ['es'] } },
+    });
+    const builds = Array.isArray(result) ? result : [result];
+    expect(builds).toHaveLength(1);
+    const [bundle] = builds;
+    assert(bundle && 'output' in bundle, 'Expected an in-memory bundle');
+    const entry = bundle.output.find((file) => file.type === 'chunk' && file.isEntry);
+    assert(entry?.type === 'chunk', 'Expected a JavaScript entry');
+    expect(entry.imports).toEqual([]);
+    expect(entry.dynamicImports).toEqual([]);
+    const url = `data:text/javascript;base64,${Buffer.from(entry.code).toString('base64')}`;
+    const bundled: { loadBundledContent(): Content } = await import(/* @vite-ignore */ url);
+    const content = bundled.loadBundledContent();
+    expect(content).toStrictEqual(expected.content);
+    const doorIds = content.doors.map((door) => door.id);
+    expect(doorIds).toContain('forgotten-archive');
+    expect(doorIds).not.toContain('tiny-adventure');
+
+    const manifest = bundle.output.find((file) => file.fileName === 'content-manifest.json');
+    assert(
+      manifest?.type === 'asset' && typeof manifest.source === 'string',
+      'Expected a manifest',
+    );
+    expect(JSON.parse(manifest.source)).toStrictEqual(expected.manifest);
   });
 
   it('the build rejects invalid content', async () => {
