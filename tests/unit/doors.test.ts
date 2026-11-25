@@ -139,7 +139,7 @@ describe('door registry and checkpoints', () => {
     expect(() => createDoorRegistry([relay], [codeDoor(relay.id)])).toThrow(
       'duplicate door id "relay-trivia"',
     );
-    const data = freshSave(42);
+    const data = freshSave(0xf06a2e11);
     const host = createDoorHost(registry, data, () => true);
     await expect(host.launch('counter')).resolves.toEqual({ kind: 'unavailable' });
     await expect(host.launch(relay.id)).resolves.toEqual({ kind: 'unavailable' });
@@ -149,7 +149,7 @@ describe('door registry and checkpoints', () => {
       kind: 'screen',
       screen: { lines: ['COUNT 0'] },
     });
-    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledExactlyOnceWith(data.profile.seed);
   });
 
   it('saves on input and exit and restores the next question from serialized storage', async () => {

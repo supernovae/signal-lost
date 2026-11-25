@@ -1,0 +1,14 @@
+{
+  "id": "R07-SPOOL-02",
+  "target": "SPOOL-02",
+  "lines": [
+    "SIGNED REPAIR MANIFEST R07-SPOOL-02",
+    "TARGET: SPOOL-02 | SIGNATURE: VERIFIED",
+    "SC-1 / signature-checker | REQUIRES: none",
+    "QR-1 / queue-reader | REQUIRES: SC-1",
+    "RW-1 / replay-writer | REQUIRES: QR-1 and SC-1",
+    "BUILD ORDER: SC-1 → QR-1 → RW-1",
+    "These three complete modules are sufficient for the local repair.",
+    "DESTINATION: separate replay copy. Preserve sealed originals unchanged.",
+  ],
+}

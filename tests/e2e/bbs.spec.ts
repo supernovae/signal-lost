@@ -555,6 +555,82 @@ test('restores SPOOL-02 and returns to the Annex by keyboard after reload', asyn
   await expect(latest).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
 });
 
+test('opens Signal Hunter after restoration, verifies the manifest and solves practice by keyboard', async ({
+  page,
+}) => {
+  await seedSaveOnce(page, recoverySave());
+  await page.goto('./');
+  await joinWithEnter(page);
+  const log = page.getByRole('log');
+  const system = log.locator('.system').last();
+  const door = log.locator('.door').last();
+  const type = (command: string) => typeCommand(page, 'BBS>', command);
+  const hunter = page.getByRole('button', { name: '[OPEN signal-hunter] SIGNAL HUNTER' });
+
+  await typeCommand(page, 'OBS>', 'CONNECT');
+  await type('DESIGNATION');
+  await expect(system).toContainText('DEEP FIELD MAIN MENU');
+  await type('DOORS');
+  await expect(door).toContainText('DEEP FIELD DOOR DIRECTORY');
+  await expect(hunter).toHaveCount(0);
+  await type('OPEN signal-hunter');
+  await expect(log.locator('.restricted').last()).toContainText('DOOR UNAVAILABLE.');
+
+  await type('BACK');
+  await type('DIRECTORY');
+  await type('BOARD spool-02-recovery');
+  await expect(system).toContainText('TARGET: RELAY 07 / SPOOL-02');
+  await type('APPLY SEAL / ROUTE / ACK');
+  await expect(log).toContainText('SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.');
+  await type('BACK');
+  await type('DOORS');
+  await expect(hunter).toBeVisible();
+  await type('OPEN signal-hunter');
+  for (const card of [
+    'H1 | RELAY-07 / INTACT',
+    'H2 | SPOOL-02 / DAMAGED',
+    'H3 | SPOOL-02 / INTACT',
+  ]) {
+    await expect(door).toContainText(card);
+  }
+  await type('VERIFY H3');
+  for (const line of [
+    'SIGNED REPAIR MANIFEST R07-SPOOL-02',
+    'SC-1 / signature-checker | REQUIRES: none',
+    'QR-1 / queue-reader | REQUIRES: SC-1',
+    'RW-1 / replay-writer | REQUIRES: QR-1 and SC-1',
+    'BUILD ORDER: SC-1 → QR-1 → RW-1',
+    'DESTINATION: separate replay copy. Preserve sealed originals unchanged.',
+  ]) {
+    await expect(door).toContainText(line);
+  }
+  const saved = await page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
+  expect(JSON.parse(saved!).flags).toContain('manifest-r07-spool-02');
+
+  await type('PRACTICE');
+  await expect(door).toContainText('Choose a practice drill.');
+  await type('INTERFERENCE');
+  await expect(door).toContainText('Samples 1–4 (receiver/reference)');
+  const lanes = door.getByText(/^Lane [A-D]:/);
+  await expect(lanes).toHaveCount(4);
+  const validLanes = (await lanes.allTextContents()).filter((line) => {
+    const pairs = [...line.matchAll(/(\d+)\/(\d+)/g)];
+    return (
+      pairs.length === 4 &&
+      pairs.every(([, receiver, reference]) => Number(receiver) - Number(reference) >= 5)
+    );
+  });
+  expect(validLanes).toEqual([expect.stringMatching(/^Lane C:/)]);
+  await type('SUBMIT A');
+  await expect(door).toContainText(/Lane A, sample [1-4] has a residual/);
+  await type('SUBMIT C');
+  await expect(door).toContainText('ROUND SOLVED.');
+  await type('EXIT');
+  await expect(system).toContainText('DEEP FIELD MAIN MENU');
+  await expect(page.getByLabel('BBS>')).toBeFocused();
+  await expect(log.getByText('SIGNED IN AS OBS-02FF', { exact: true })).toHaveCount(1);
+});
+
 test('stages, clears and applies the recovery order with pointer controls', async ({ page }) => {
   await seedSaveOnce(page, recoverySave());
   await page.goto('./');

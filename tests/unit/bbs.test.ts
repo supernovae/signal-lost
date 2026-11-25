@@ -1232,6 +1232,7 @@ describe('the Q17 investigation', () => {
     expect(next.commands().filter((command) => command.startsWith('OPEN '))).toEqual([
       'OPEN forgotten-archive',
       'OPEN relay-trivia',
+      'OPEN signal-hunter',
     ]);
     await next.run('BACK');
     expect(next.commands()).toContain(annex);

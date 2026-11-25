@@ -100,5 +100,5 @@ export function defineDoor<State, Saved extends DoorPayload>(
 export interface CodeDoorRegistration {
   source: string;
   metadata: DoorMetadata;
-  load(): Promise<{ default: DoorLifecycle }>;
+  load(saveSeed: number): Promise<{ default: DoorLifecycle }>;
 }

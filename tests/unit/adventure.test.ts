@@ -58,7 +58,7 @@ function earned(running: RunningDoor) {
 
 async function lifecycle() {
   const registration = registry.find(adventure.id, admission)!;
-  return (await registration.load()).default;
+  return (await registration.load(42)).default;
 }
 
 describe('Forgotten Archive', () => {

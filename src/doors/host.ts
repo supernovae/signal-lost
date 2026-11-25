@@ -46,7 +46,7 @@ export function createDoorHost(
     if (!registration) return { kind: 'unavailable' };
     opening = true;
     try {
-      const { default: lifecycle } = await registration.load();
+      const { default: lifecycle } = await registration.load(data.profile.seed);
       const facts = factsOf(data);
       if (!registry.find(id, facts)) return { kind: 'unavailable' };
       const progress = progressView(facts);
