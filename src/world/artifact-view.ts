@@ -14,14 +14,18 @@ export function openArtifact(panel: HTMLElement, artifact: Artifact): void {
     list.append(anchor);
   }
   panel.replaceChildren(list);
-  const copy = artifact.contributorRecord;
-  if (copy) {
-    const mount = document.createElement('div');
-    panel.append(mount);
-    void import('./contributor-view.ts')
-      .then(({ showContributors }) => showContributors(mount, copy))
-      .catch(() => {
-        mount.textContent = copy.loadFailure;
-      });
-  }
+  if (artifact.contributorRecord) openContributorRecord(panel, artifact.contributorRecord);
+}
+
+export function openContributorRecord(
+  panel: HTMLElement,
+  copy: NonNullable<Artifact['contributorRecord']>,
+): void {
+  const mount = document.createElement('div');
+  panel.append(mount);
+  void import('./contributor-view.ts')
+    .then(({ showContributors }) => showContributors(mount, copy))
+    .catch(() => {
+      mount.textContent = copy.loadFailure;
+    });
 }

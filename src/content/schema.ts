@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { bbsThemeIds } from '../bbs/themes.ts';
 import type { Condition } from './conditions.ts';
+import {
+  evidenceModes,
+  repairOperations,
+  retainedModuleSchema,
+  sealLabel,
+  type RepairManifest,
+} from './repair-manifest.ts';
 
 const id = z
   .string()
@@ -40,6 +47,14 @@ const record = {
   attribution: attribution.optional(),
   provenance: z.string().optional(),
 };
+
+const contributorRecordSchema = z.strictObject({
+  heading: z.string().min(1),
+  review: z.string().min(1),
+  maintainersOnly: z.string().min(1),
+  empty: z.string().min(1),
+  loadFailure: z.string().min(1),
+});
 
 type AccessCondition = string | { all: AccessCondition[] } | { any: AccessCondition[] };
 const accessCondition: z.ZodType<AccessCondition> = z.lazy(() =>
@@ -84,14 +99,28 @@ export const capabilitySchema = z.discriminatedUnion('kind', [
 const origin = z.enum(['fictional', 'reviewed-community']).default('fictional');
 const messageTone = z.enum(['history', 'ai-fictional', 'recovered', 'private']);
 
-export const episodeSchema = z.strictObject({
-  ...record,
-  title: z.string(),
-  puzzles: z.array(id).min(1),
-  ending: text,
-  grants: z.array(fact).default([]),
-  designationPrefix: z.string().min(1),
-});
+export const episodeSchema = z
+  .strictObject({
+    ...record,
+    title: z.string(),
+    puzzles: z.array(id),
+    completionFacts: z.array(conditionFact).min(1).optional(),
+    ending: text,
+    grants: z.array(fact).default([]),
+    designationPrefix: z.string().min(1).optional(),
+  })
+  .refine(({ puzzles, completionFacts }) => puzzles.length > 0 || completionFacts !== undefined, {
+    path: ['puzzles'],
+    message: 'an episode needs puzzles or completion facts',
+  })
+  .refine(
+    ({ completionFacts, designationPrefix }) =>
+      completionFacts !== undefined || designationPrefix !== undefined,
+    {
+      path: ['designationPrefix'],
+      message: 'a puzzle-only episode needs a designation prefix',
+    },
+  );
 
 const puzzleBase = {
   ...record,
@@ -222,6 +251,26 @@ export const bbsMessageSchema = z.strictObject({
   date: z.string().min(1),
   body: text.min(1),
   eventOnly: z.boolean().default(false),
+  retainedModule: retainedModuleSchema.optional(),
+  sealedOriginals: z
+    .array(
+      z.strictObject({
+        recordId: sealLabel,
+        seal: sealLabel,
+        readOnly: z.boolean(),
+        sender: z.string().min(1),
+        note: z.string().min(1),
+      }),
+    )
+    .min(1)
+    .optional(),
+  dispatchCopy: z
+    .strictObject({
+      recordId: sealLabel,
+      seal: sealLabel,
+      deliveryIndex: z.number().int().positive(),
+    })
+    .optional(),
 });
 
 export const eventSchema = z.strictObject({
@@ -239,7 +288,61 @@ export const eventSchema = z.strictObject({
 
 export const bbsCheckVerbs = ['SEARCH', 'SUBMIT'] as const;
 export const bbsOrderVerbs = ['ORDER', 'CLEAR', 'APPLY'] as const;
+export const bbsReconstructionVerbs = ['COMPARE', 'RECONSTRUCT', 'CREDITS'] as const;
 const checkLine = z.string().trim().min(1);
+const unique = (values: readonly string[]) => new Set(values).size === values.length;
+
+const checkPrerequisites = z
+  .array(z.strictObject({ fact: conditionFact, missingEvidence: checkLine }))
+  .min(1)
+  .refine(
+    (entries) => unique(entries.map(({ fact }) => fact)),
+    'prerequisite facts must be unique',
+  );
+
+const reconstructionCheckSchema = z.strictObject({
+  manifestId: sealLabel,
+  prerequisites: checkPrerequisites,
+  fragmentMessageIds: z.array(id).min(1).refine(unique, 'fragment messages must be unique'),
+  recipe: z.array(sealLabel).min(1).refine(unique, 'recipe seals must be unique'),
+  custody: z.strictObject({
+    originalsMessageId: id,
+    dispatchMessageIds: z.array(id).min(1).refine(unique, 'dispatch messages must be unique'),
+    holdReceiptMessageId: id,
+  }),
+  responseMessageId: id,
+  episodeId: id,
+  choices: z
+    .array(
+      z.strictObject({
+        operation: z.enum(repairOperations),
+        evidenceMode: z.enum(evidenceModes),
+        result: checkLine,
+        feedback: checkLine,
+      }),
+    )
+    .length(repairOperations.length * evidenceModes.length)
+    .refine(
+      (entries) =>
+        unique(entries.map(({ operation, evidenceMode }) => `${operation}/${evidenceMode}`)),
+      'reconstruction choices must cover each pair once',
+    ),
+  copy: z.strictObject({
+    compare: checkLine,
+    missingFragments: checkLine,
+    missingComparison: checkLine,
+    mismatch: checkLine,
+    chooseMode: checkLine,
+    comparisonHeading: checkLine,
+    recipeHeading: checkLine,
+    audit: checkLine,
+    auditHeading: checkLine,
+    auditRecord: checkLine,
+    auditNote: checkLine,
+    saveRefused: checkLine,
+  }),
+  credits: contributorRecordSchema.extend({ label: checkLine, close: checkLine }).optional(),
+});
 
 export const bbsMessageBoardSchema = z
   .strictObject({
@@ -267,13 +370,7 @@ export const bbsMessageBoardSchema = z
       .optional(),
     orderCheck: z
       .strictObject({
-        prerequisites: z
-          .array(z.strictObject({ fact: conditionFact, missingEvidence: checkLine }))
-          .min(1)
-          .refine(
-            (entries) => new Set(entries.map((entry) => entry.fact)).size === entries.length,
-            'prerequisite facts must be unique',
-          ),
+        prerequisites: checkPrerequisites,
         operations: z
           .array(
             z.strictObject({ token: z.string().regex(/^[A-Z][A-Z0-9-]*$/), outOfOrder: checkLine }),
@@ -288,11 +385,19 @@ export const bbsMessageBoardSchema = z
         responseMessageId: id,
       })
       .optional(),
+    reconstructionCheck: reconstructionCheckSchema.optional(),
   })
   .refine(({ check, orderCheck }) => !(check && orderCheck), {
     path: ['orderCheck'],
     message: 'a board can have only one check',
-  });
+  })
+  .refine(
+    ({ check, orderCheck, reconstructionCheck }) => !(reconstructionCheck && (check || orderCheck)),
+    {
+      path: ['reconstructionCheck'],
+      message: 'a board can have only one check',
+    },
+  );
 
 export const bbsThreadSchema = z.strictObject({
   ...record,
@@ -573,15 +678,7 @@ export const artifactSchema = z.strictObject({
   description: text,
   requires: condition.optional(),
   bbsBoard: id.optional(),
-  contributorRecord: z
-    .strictObject({
-      heading: z.string().min(1),
-      review: z.string().min(1),
-      maintainersOnly: z.string().min(1),
-      empty: z.string().min(1),
-      loadFailure: z.string().min(1),
-    })
-    .optional(),
+  contributorRecord: contributorRecordSchema.optional(),
   links: z.array(z.strictObject({ label: z.string(), url: z.url() })).default([]),
   grantsOnOpen: z.array(fact).default([]),
 });
@@ -611,6 +708,7 @@ export type Transmission = z.infer<typeof transmissionSchema>;
 export type Archive = z.infer<typeof archiveSchema>;
 export type BbsBoard = z.infer<typeof bbsBoardSchema>;
 export type BbsMessage = z.infer<typeof bbsMessageSchema>;
+export type ReconstructionCheck = z.infer<typeof reconstructionCheckSchema>;
 export type NetworkEvent = z.infer<typeof eventSchema>;
 export type BbsRecord = z.infer<typeof bbsSchema>;
 export type BbsThread = z.infer<typeof bbsThreadSchema>;
@@ -642,4 +740,5 @@ export interface Content {
   artifacts: Artifact[];
   screens: Screen[];
   community: CommunityPackage[];
+  repairManifests: RepairManifest[];
 }

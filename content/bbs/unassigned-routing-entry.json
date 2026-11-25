@@ -1,0 +1,18 @@
+{
+  "kind": "message",
+  "id": "unassigned-routing-entry",
+  "board": "deep-field",
+  "title": "UNASSIGNED / routing-table entry",
+  "from": "SPOOL-02 / RETAINED ROUTING TABLE",
+  "date": "UNDATED",
+  "presentation": "recovered",
+  "body": [
+    "DESTINATION: UNASSIGNED",
+    "DESTINATION SLOT: PREPARED",
+    "REGISTERED OPERATOR: [EMPTY]",
+    "AUTHOR: [NO CREDIT ON FILE]",
+    "SIGNAL ORIGIN: UNRESOLVED",
+    "Who prepared a destination with no registered operator?"
+  ],
+  "eventOnly": true
+}

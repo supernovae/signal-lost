@@ -10,5 +10,11 @@
     "REQUIRES: SC-1. Admits only verified records.",
     "END queue-reader / SEAL QR-1 VERIFIED",
     "PACKET: Check the seal before the queue. Saves routing a bad copy twice."
-  ]
+  ],
+  "retainedModule": {
+    "name": "queue-reader",
+    "seal": "QR-1",
+    "boundary": "complete",
+    "dependencies": ["SC-1"]
+  }
 }

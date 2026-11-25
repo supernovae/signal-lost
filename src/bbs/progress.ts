@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import type { Episode } from '../content/schema.ts';
+import { completeEpisodes } from '../progress/episodes.ts';
 import type { SaveData } from '../progress/save.ts';
 
 const id = z.string().regex(/^[a-z0-9]+([.-][a-z0-9]+)*$/);
@@ -80,7 +82,8 @@ export function applyBbsEffect(data: SaveData, effect: BbsEffect): boolean {
 export function createBbsProgress(
   data: SaveData,
   settle: (candidate: SaveData) => readonly string[],
-  persist: () => boolean,
+  persist: (candidate?: SaveData) => boolean,
+  episodes: readonly Episode[] = [],
 ) {
   return {
     apply(effect: BbsEffect): boolean {
@@ -88,5 +91,17 @@ export function createBbsProgress(
       return persist();
     },
     connect: () => settle(data).length === 0 || persist(),
+    applyCompletion(effect: BbsEffect, episodeId: string): Episode | undefined {
+      const candidate = structuredClone(data);
+      applyBbsEffect(candidate, effect);
+      settle(candidate);
+      const { completed } = completeEpisodes(episodes, candidate);
+      const episode = completed.find(({ id }) => id === episodeId);
+      if (!episode) return;
+      settle(candidate);
+      if (!persist(candidate)) return;
+      Object.assign(data, candidate);
+      return episode;
+    },
   };
 }

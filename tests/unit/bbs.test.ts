@@ -2,9 +2,12 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { buildTools } from '../../src/app/tools.ts';
+import { createAudio } from '../../src/audio/audio.ts';
 import { createBbs, getBbsOffer, type DispatchResult } from '../../src/bbs/bbs.ts';
 import { applyBbsEffect, createBbsProgress } from '../../src/bbs/progress.ts';
 import { evaluate } from '../../src/content/conditions.ts';
+import { projectEntryContent } from '../../src/content/browser-split.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import type { Content } from '../../src/content/schema.ts';
 import { loadContent } from '../../src/content/validate.ts';
@@ -784,11 +787,21 @@ describe('the Q17 investigation', () => {
   const restore = 'APPLY SEAL / ROUTE / ACK';
   const receiptId = 'spool-02-restoration-receipt';
   const restoreFlag = 'spool-02-restored';
+  const manifestFlag = 'manifest-r07-spool-02';
+  const fragmentThread = 'THREAD maintenance-annex-fragments';
+  const canonicalMode = 'RECONSTRUCT REPLAY / PRESERVE';
+  const replayReceipt = 'spool-02-replay-receipt';
+  const unassigned = 'unassigned-routing-entry';
 
-  function start(forgeOpened = true) {
-    const flags = completedV1.flags.filter((flag) => forgeOpened || flag !== 'forge-opened');
+  function start(forgeOpened = true, serviceOpened = true) {
+    const flags = completedV1.flags.filter(
+      (flag) =>
+        (forgeOpened || flag !== 'forge-opened') &&
+        (serviceOpened || flag !== 'service-panel-open'),
+    );
+    const puzzles = completedV1.puzzles.filter((id) => serviceOpened || id !== 'puzzle.service');
     const journey = boardSession(
-      sessionData(memoryStorage(JSON.stringify({ ...completedV1, flags }))),
+      sessionData(memoryStorage(JSON.stringify({ ...completedV1, flags, puzzles }))),
     );
     expect(journey.status).toBe('migrated');
     expect(journey.data.flags.includes('forge-opened')).toBe(forgeOpened);
@@ -1041,21 +1054,22 @@ describe('the Q17 investigation', () => {
     },
   );
 
-  async function liveSession(session: ReturnType<typeof sessionData>) {
+  async function liveSession(session: ReturnType<typeof sessionData>, records = content) {
     const { data, persist } = session;
-    const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
-    const host = createDoorHost(createDoorRegistry(content.doors), data, persist, settle);
-    const progress = createBbsProgress(data, settle, persist);
-    const game = createGame({ content, data, persist });
-    const voices = createDialogueSources(content.characters);
+    const settle = (candidate: typeof data) => settleEvents(records.events, candidate);
+    const host = createDoorHost(createDoorRegistry(records.doors), data, persist, settle);
+    const progress = createBbsProgress(data, settle, persist, records.episodes);
+    const game = createGame({ content: records, data, persist });
+    const voices = createDialogueSources(records.characters);
     const bbs = createBbsDoorSession(
-      getBbsOffer(content, factsOf(data))!,
+      getBbsOffer(records, factsOf(data))!,
       () => data,
       host,
       (id) => {
         const source = voices.get(id);
         return source && game.say(source, 'bbs');
       },
+      progress.applyCompletion,
     );
     async function dispatch(command: string) {
       const offline = bbs.screen().phase === 'offline';
@@ -1074,6 +1088,7 @@ describe('the Q17 investigation', () => {
       session.storage.setItem.mockClear();
       const output = await dispatch(command);
       expect(output.result.effect).toBeUndefined();
+      expect(output.result.completion).toBeUndefined();
       expect(data).toEqual(before);
       expect(session.storage.value).toBe(bytes);
       expect(session.storage.setItem).not.toHaveBeenCalled();
@@ -1465,6 +1480,326 @@ describe('the Q17 investigation', () => {
         proofRoutes.push(desk.headers);
       }
       await finishRestoration(reopened, proofRoutes, forgeOpened);
+    },
+  );
+
+  async function openAnnex({ run }: LiveSession) {
+    await run('MENU');
+    await run('DIRECTORY');
+    return run(annex);
+  }
+
+  async function expectUnpublished(session: LiveSession) {
+    expect(session.data.episodes).not.toContain('episode.002');
+    expect(session.data.events.bulletins).not.toContain(replayReceipt);
+    expect(session.data.events.bulletins).not.toContain(unassigned);
+    await session.run('MENU');
+    await session.run('MESSAGES');
+    const offered = session.bbs.screen().actions;
+    expect(offered.map(({ label }) => label).join(' ')).not.toMatch(/replay receipt|UNASSIGNED/);
+    const nextRead = offered.filter(({ command }) => command.startsWith('READ ')).length + 1;
+    expect(await session.noWrite(`READ ${nextRead}`)).toContain('SELECT A MESSAGE FROM THE LIST.');
+  }
+
+  function hubToolIds(data: LiveSession['data']) {
+    const entry = projectEntryContent(content);
+    const game = createGame({ content: entry, data, persist: () => undefined });
+    return buildTools({
+      content: entry,
+      game,
+      audio: createAudio(),
+      echo: createDialogueSources(entry.characters).get('echo')!,
+      utilities: [],
+      onEpisodeComplete: () => undefined,
+    }).map(({ id }) => id);
+  }
+
+  const finaleCases = [
+    { proof: desk.headers, door: 'signal-hunter', forge: false },
+    { proof: desk.headers, door: 'relay-trader', forge: true },
+    { proof: desk.custody, door: 'signal-hunter', forge: true },
+    { proof: desk.custody, door: 'relay-trader', forge: false },
+  ];
+
+  it.each(finaleCases)(
+    'completes Chapter 2 through $proof.board and $door',
+    async ({ proof, door, forge }) => {
+      const prior = start(forge, forge);
+      const { data, storage } = prior;
+      await expectUnpublished(await liveSession(prior));
+      discover(prior);
+      gather(prior, proof);
+      submit(prior, proof);
+      expect(
+        data.flags.filter((flag) => /^deferred-(headers|custody)-verified$/.test(flag)),
+      ).toEqual([proof.flag]);
+
+      const session = await liveSession(prior);
+      const { run, noWrite, bbs } = session;
+      await run('DOORS');
+      await run('OPEN forgotten-archive');
+      await run('TRAINING SHELF');
+      for (const fragment of ['SEAL', 'ROUTE', 'ACK']) await run(`INSPECT ${fragment} FRAGMENT`);
+      expect(await run('SEAL / ROUTE / ACK')).toContain(
+        'PROCEDURE LEARNED. The training notebook is available.',
+      );
+      await run('EXIT');
+      await openRecovery(session);
+      expect(await run(restore)).toContain(
+        'SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.',
+      );
+      await run('MENU');
+      await run('DOORS');
+      await run(`OPEN ${door}`);
+      let signed: string[];
+      if (door === 'signal-hunter') {
+        expect((await run('VERIFY H1')).join(' ')).toContain('RELAY-07');
+        expect((await run('VERIFY H2')).join(' ')).toContain('DAMAGED');
+        expect(data.flags).not.toContain(manifestFlag);
+        signed = await run('VERIFY H3');
+      } else {
+        expect((await run('CLAIM ENVELOPE')).join(' ')).toContain('envelope');
+        await run('STAMP ACK SPOOL-02');
+        signed = await run('EXCHANGE');
+      }
+      expect(signed).toContain('SIGNED REPAIR MANIFEST R07-SPOOL-02');
+      expect(data.flags.filter((flag) => flag === manifestFlag)).toEqual([manifestFlag]);
+      await run('EXIT');
+      expect(data.doorState).not.toHaveProperty(
+        door === 'signal-hunter' ? 'relay-trader' : 'signal-hunter',
+      );
+      await expectUnpublished(session);
+
+      expect(await openAnnex(session)).toContain('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+      expect(session.commands()).not.toContain('COMPARE');
+      await run(fragmentThread);
+      await run('BACK');
+      expect(await noWrite(canonicalMode)).toEqual([
+        'COMPARE the retained fragments and recipe with the verified manifest first.',
+      ]);
+      expect(await noWrite('CREDITS')).toContain('COMMAND UNAVAILABLE HERE.');
+      const comparison = await noWrite('COMPARE');
+      expect(comparison).toEqual(
+        expect.arrayContaining([
+          'SC-1 / signature-checker | REQUIRES: none | BOUNDARY: COMPLETE',
+          'QR-1 / queue-reader | REQUIRES: SC-1 | BOUNDARY: COMPLETE',
+          'RW-1 / replay-writer | REQUIRES: QR-1 and SC-1 | BOUNDARY: COMPLETE',
+          'BUILD ORDER: SC-1 → QR-1 → RW-1',
+          'DESTINATION: separate replay copy. Preserve sealed originals unchanged.',
+        ]),
+      );
+      expect(await noWrite('COMPARE')).toEqual(comparison);
+      expect(
+        bbs
+          .screen()
+          .actions.filter(({ command }) => command.startsWith('RECONSTRUCT '))
+          .map(({ label }) => label),
+      ).toEqual(['REPLAY / PRESERVE', 'REPLAY / REPLACE', 'RESET / PRESERVE', 'RESET / REPLACE']);
+      expect(await noWrite('RECONSTRUCT REPLAY / REPLACE')).toContain(
+        'REPLACE would overwrite the sealed originals and lose their custody record.',
+      );
+      await expectUnpublished(session);
+      await openAnnex(session);
+      expect(await noWrite(canonicalMode)).toContain(
+        'COMPARE the retained fragments and recipe with the verified manifest first.',
+      );
+      await run('COMPARE');
+
+      const before = structuredClone(data);
+      const tools = hubToolIds(data);
+      storage.setItem.mockClear();
+      const { result } = await session.dispatch(canonicalMode);
+      expect(result.effect).toBeUndefined();
+      expect(storage.setItem).toHaveBeenCalledOnce();
+      const completion = result.completion!;
+      expect(completion.episode.id).toBe('episode.002');
+      const indexes = completion.audit.filter((line) => line.startsWith('DELIVERY '));
+      expect(indexes).toEqual([
+        'DELIVERY 141 / P17 | REPLAY SEAL P17 = ORIGINAL SEAL P17',
+        'DELIVERY 142 / G17 | REPLAY SEAL G17 = ORIGINAL SEAL G17',
+      ]);
+      expect(completion.audit.join(' ')).toContain(
+        'Q17: migration hold; sealed before departure; release unchanged after checkpoint 121.',
+      );
+      expect(data).toEqual({
+        ...before,
+        episodes: ['episode.000', 'episode.002'],
+        bbs: {
+          ...before.bbs,
+          history: [...before.bbs.history, { kind: 'read', id: `message:${replayReceipt}` }],
+        },
+        bbsReadMessages: [...before.bbsReadMessages, `message:${replayReceipt}`],
+        events: {
+          fired: [...before.events.fired, 'spool-02-reconstructed', unassigned],
+          bulletins: [...before.events.bulletins, replayReceipt, unassigned],
+        },
+      });
+      expect(hubToolIds(data)).toEqual(tools);
+
+      const saved = sessionData(storage);
+      expect(saved.data).toEqual(data);
+      const reloaded = await liveSession(saved);
+      await openAnnex(reloaded);
+      expect(await reloaded.noWrite(canonicalMode)).toEqual(
+        expect.arrayContaining([...completion.audit]),
+      );
+      const credits = await reloaded.dispatch('CREDITS');
+      expect(credits.result.opensCredits?.heading).toBe('Contributor record');
+      expect(credits.result.effect).toBeUndefined();
+      expect(reloaded.bbs.screen().phase).toBe('credits');
+      await reloaded.run('BACK');
+      expect(reloaded.commands()).toContain(fragmentThread);
+      const comments = await liveVoices(reloaded);
+      expect(comments.sysop).toContain('BOTH ORIGINALS REMAIN SEALED AND READ-ONLY.');
+      expect(comments.echo).toContain('I can cite the SPOOL-02 receipt');
+      await reloaded.run('MENU');
+      await reloaded.run('MESSAGES');
+      const discovery = reloaded.bbs
+        .screen()
+        .actions.find(({ label }) => label.startsWith('UNASSIGNED'));
+      expect(discovery?.label).toContain('[NEW]');
+      expect(await reloaded.run(discovery!.command)).toEqual(
+        expect.arrayContaining([
+          'REGISTERED OPERATOR: [EMPTY]',
+          'Who prepared a destination with no registered operator?',
+        ]),
+      );
+      await reloaded.run('MENU');
+      await reloaded.run('DIRECTORY');
+      expect(reloaded.commands()).toEqual(expect.arrayContaining([annex, recovery, 'DOORS']));
+      expect(await reloaded.run('NETWORK')).toEqual(
+        expect.arrayContaining(['SPOOL-02 | AVAILABLE', 'SILENT OBSERVATORY | RESTRICTED']),
+      );
+    },
+  );
+
+  const annexRecord = content.bbs.find((record) => record.id === 'maintenance-annex')!;
+  if (annexRecord.kind !== 'message-board') throw new Error('Expected the Annex board');
+  const reconstruction = annexRecord.reconstructionCheck!;
+
+  async function replayReady({
+    omitFlag,
+    omitRead,
+    records = content,
+  }: { omitFlag?: string; omitRead?: string; records?: Content } = {}) {
+    const prior = start(false, false);
+    prior.data.flags.push(...[restoreFlag, manifestFlag].filter((flag) => flag !== omitFlag));
+    prior.data.bbsReadMessages.push(
+      ...reconstruction.fragmentMessageIds
+        .filter((id) => id !== omitRead)
+        .map((id) => `message:${id}`),
+    );
+    prior.persist();
+    const session = await liveSession(prior, records);
+    await openAnnex(session);
+    return session;
+  }
+
+  it.each([restoreFlag, manifestFlag])('cannot reconstruct without %s', async (omitFlag) => {
+    const session = await replayReady({ omitFlag });
+    expect(session.commands()).not.toContain('COMPARE');
+    await session.noWrite('COMPARE');
+    await session.noWrite(canonicalMode);
+    await expectUnpublished(session);
+  });
+
+  it.each(reconstruction.fragmentMessageIds)(
+    'cannot compare before reading %s',
+    async (omitRead) => {
+      const session = await replayReady({ omitRead });
+      expect(session.commands()).not.toContain('COMPARE');
+      expect(await session.noWrite('COMPARE')).toContain(reconstruction.copy.missingFragments);
+      expect(await session.noWrite(canonicalMode)).toContain(reconstruction.copy.missingFragments);
+    },
+  );
+
+  it('keeps the comparison and progress intact on invalid choices or a refused write', async () => {
+    const session = await replayReady();
+    const { noWrite, storage, data } = session;
+    await noWrite('COMPARE');
+    for (const { operation, evidenceMode, feedback } of reconstruction.choices.slice(1)) {
+      expect(await noWrite(`RECONSTRUCT ${operation} / ${evidenceMode}`)).toContain(feedback);
+    }
+    for (const command of [
+      'RECONSTRUCT',
+      'RECONSTRUCT REPLAY PRESERVE',
+      'RECONSTRUCT REPLAY / PRESERVE / RESET',
+      'RECONSTRUCT REPLAY / PRESERVE extra',
+      'RECONSTRUCT RESET /',
+    ]) {
+      expect(await noWrite(command)).toContain(reconstruction.copy.chooseMode);
+    }
+    const before = structuredClone(data);
+    const bytes = storage.value;
+    storage.setItem.mockImplementationOnce(() => {
+      throw new Error('save refused');
+    });
+    const refused = (await session.dispatch(canonicalMode)).result;
+    expect(refused.completion).toBeUndefined();
+    expect(lines(refused)).toEqual([reconstruction.copy.saveRefused]);
+    expect(data).toEqual(before);
+    expect(storage.value).toBe(bytes);
+    expect(session.commands()).toContain(canonicalMode);
+    storage.setItem.mockClear();
+    expect(
+      (await session.dispatch('  reconstruct  replay/preserve  ')).result.completion,
+    ).toBeDefined();
+    expect(storage.setItem).toHaveBeenCalledOnce();
+    expect(sessionData(storage).data.episodes).toEqual(['episode.000', 'episode.002']);
+    expect(await noWrite(canonicalMode)).toContain('LOCAL REPLAY AUDIT');
+  });
+
+  it('does not complete Chapter 2 on an Episode 000 puzzle solve without the receipt', () => {
+    const { data, persist } = start(false, false);
+    data.flags.push(restoreFlag, manifestFlag);
+    const game = createGame({ content, data, persist });
+    expect(game.attempt('puzzle.service', { kind: 'code', code: '709' })).toMatchObject({
+      status: 'solved',
+      granted: ['solved:puzzle.service', 'flag:service-panel-open'],
+    });
+    expect(data.episodes).toEqual(['episode.000']);
+    expect(data.events.bulletins).not.toContain(unassigned);
+  });
+
+  it.each(['seal', 'boundary', 'dependencies', 'recipe', 'dispatch'] as const)(
+    'rejects inconsistent %s evidence without committing progress',
+    async (field) => {
+      const records = structuredClone(content);
+      const session = await replayReady({ records });
+      expect((await session.noWrite('COMPARE')).join(' ')).toContain(
+        reconstruction.copy.comparisonHeading,
+      );
+      const fragment = session.bbs;
+      const queue = records.bbs.find((record) => record.id === 'annex-queue-reader');
+      const packet = records.bbs.find((record) => record.id === 'packet-p17');
+      const board = records.bbs.find((record) => record.id === 'maintenance-annex');
+      if (
+        queue?.kind !== 'message' ||
+        packet?.kind !== 'message' ||
+        board?.kind !== 'message-board'
+      ) {
+        throw new Error('Expected reconstruction records');
+      }
+      switch (field) {
+        case 'seal':
+          queue.retainedModule!.seal = 'BAD';
+          break;
+        case 'boundary':
+          queue.retainedModule!.boundary = 'partial';
+          break;
+        case 'dependencies':
+          queue.retainedModule!.dependencies.push('RW-1');
+          break;
+        case 'recipe':
+          board.reconstructionCheck!.recipe.reverse();
+          break;
+        case 'dispatch':
+          packet.dispatchCopy!.seal = 'BAD';
+          break;
+      }
+      expect(await session.noWrite(canonicalMode)).toContain(reconstruction.copy.mismatch);
+      expect(fragment.screen().phase).toBe('board');
+      await expectUnpublished(session);
     },
   );
 

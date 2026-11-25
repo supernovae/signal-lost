@@ -5,9 +5,9 @@ import { applyPreferences, effectiveMotion, openSettings } from './app/settings.
 import { createSceneManager } from './app/scenes.ts';
 import { buildTools } from './app/tools.ts';
 import { bbsCopy, fill } from './bbs/copy.ts';
-import { getBbsOffer } from './bbs/offer.ts';
 import { bbsThemeStyles } from './bbs/themes.ts';
-import { loadBundledContent } from './content/browser.ts';
+import { loadBundledEntryContent } from './content/browser.ts';
+import { evaluate } from './content/conditions.ts';
 import type { Episode } from './content/schema.ts';
 import { createAudio } from './audio/audio.ts';
 import { createDialogueSources } from './narrative/dialogue.ts';
@@ -20,7 +20,7 @@ import './style.css';
 
 const root = document.querySelector<HTMLElement>('#app')!;
 const canvas = document.querySelector<HTMLCanvasElement>('#viewscreen')!;
-const content = loadBundledContent();
+const content = loadBundledEntryContent();
 const screen = (id: string): readonly string[] =>
   content.screens.find((s) => s.id === id)?.lines ?? [];
 
@@ -33,10 +33,6 @@ const { data } = session;
 const game = createGame({ content, data, persist: session.persist });
 const voices = createDialogueSources(content.characters);
 const echo = voices.get('echo')!;
-const sayOnBbs = (characterId: string) => {
-  const source = voices.get(characterId);
-  return source && game.say(source, 'bbs');
-};
 
 const audio = createAudio();
 const systemReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -123,14 +119,15 @@ let resetNoticePending = session.status === 'reset';
 const showHub = (): void => {
   const lines = [...screen('boot')];
   if (resetNoticePending) lines.push(...screen('save-reset'));
-  const offer = getBbsOffer(content, game.facts());
-  if (offer) lines.push(offer.board.notice);
+  const facts = game.facts();
+  const endpoint = content.endpoints.find((record) => evaluate(record.requires, facts));
+  if (endpoint) lines.push(endpoint.notice);
   resetNoticePending = false;
   let active = true;
   let connecting = false;
   const hub = createHub(root, lines, () => {
     const tools = buildTools(toolContext);
-    if (!offer) return tools;
+    if (!endpoint) return tools;
     return [
       ...tools,
       {
@@ -139,29 +136,33 @@ const showHub = (): void => {
         run(terminal) {
           if (connecting) return;
           connecting = true;
-          terminal.print([`CONNECTING TO ${offer.board.title}.`], 'dim');
-          void import('./bbs/connection.ts').then(
-            ({ createBbsConnection }) => {
+          terminal.print([`CONNECTING TO ${endpoint.title}.`], 'dim');
+          void import('./bbs/connection.ts')
+            .then(({ createBbsConnection }) => {
               if (!active) return;
               scenes.show(
                 createBbsConnection({
                   root,
-                  offer,
-                  content,
+                  shared: content,
+                  facts,
                   session,
-                  say: sayOnBbs,
+                  say: game.say,
                   onSettings: showSettings,
                   onDisconnect: showHub,
+                  onCompletion: ({ episode, audit }) => {
+                    scenes.show(
+                      createEnding(root, episode.ending, audit, motionAllowed(), showHub),
+                    );
+                  },
                 }),
               );
-            },
-            () => {
+            })
+            .catch(() => {
               if (!active) return;
               connecting = false;
               terminal.print(['CONNECTION UNAVAILABLE.'], 'alert');
               terminal.focus();
-            },
-          );
+            });
         },
       },
     ];

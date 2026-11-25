@@ -1,6 +1,7 @@
 import type { Scene } from '../app/scenes.ts';
 import { createTerminal, type Terminal } from '../terminal/terminal.ts';
-import { openArtifact } from '../world/artifact-view.ts';
+import { openArtifact, openContributorRecord } from '../world/artifact-view.ts';
+import type { DispatchResult } from './bbs.ts';
 import { bbsCopy } from './copy.ts';
 import type { BbsDoorSession } from './door-session.ts';
 import type { BbsEffect, BbsSnapshot } from './progress.ts';
@@ -15,6 +16,7 @@ export function createBbsScene(
   onConnect: () => boolean,
   onSettings: (terminal: Terminal) => void,
   onDisconnect: () => void,
+  onCompletion: (completion: NonNullable<DispatchResult['completion']>) => void,
 ): Scene {
   let terminal: Terminal | undefined;
 
@@ -34,7 +36,11 @@ export function createBbsScene(
           const previousPhase = bbs.screen().phase;
           const result = await bbs.dispatch(command);
           if (!result || terminal !== active) return;
-          const { output, effect, opensSettings, opensArtifact } = result;
+          const { output, effect, opensSettings, opensArtifact, opensCredits, completion } = result;
+          if (completion) {
+            onCompletion(completion);
+            return;
+          }
           const connected = previousPhase === 'offline' && bbs.screen().phase === 'login';
           const saved = connected ? onConnect() : !effect || onEffect(effect);
           const { phase, actions, hint } = bbs.screen();
@@ -46,7 +52,8 @@ export function createBbsScene(
             !opensSettings &&
             (settingsOpen ||
               (phase !== 'login' && handleInput) ||
-              (previousPhase === 'artifact' && phase !== 'artifact'))
+              (previousPhase === 'artifact' && phase !== 'artifact') ||
+              (previousPhase === 'credits' && phase !== 'credits'))
           ) {
             active.closePanel();
             settingsOpen = false;
@@ -72,7 +79,16 @@ export function createBbsScene(
           }
           if (!saved) active.print([tones['network-error'], text.saveRefused], 'network-error');
           if (opensArtifact) openArtifact(active.openPanel(), opensArtifact);
-          if (opensSettings) {
+          if (opensCredits) {
+            const panel = active.openPanel();
+            openContributorRecord(panel, opensCredits);
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.textContent = opensCredits.close;
+            close.addEventListener('click', () => void run('BACK'));
+            panel.append(close);
+            close.focus();
+          } else if (opensSettings) {
             settingsOpen = true;
             onSettings(active);
           } else if (fromHandleForm && handleInput) handleInput.focus();

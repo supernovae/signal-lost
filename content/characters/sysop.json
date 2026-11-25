@@ -56,6 +56,15 @@
       "when": "flag:spool-02-restored",
       "priority": 5,
       "text": ["MAINTAINER GRANTED. ORIGINAL REMAINS READ-ONLY.", "WORKING COPY ACCESS ONLY."]
+    },
+    {
+      "id": "sysop.bbs.spool-02-reconstructed",
+      "kind": "bbs",
+      "when": "completed:episode.002",
+      "priority": 6,
+      "text": [
+        "LOCAL REPLAY AUDIT FILED IN MAINTENANCE ANNEX. BOTH ORIGINALS REMAIN SEALED AND READ-ONLY."
+      ]
     }
   ]
 }

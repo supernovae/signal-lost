@@ -1,9 +1,9 @@
 import { evaluate } from '../content/conditions.ts';
 import type { Content, DialogueLine, Puzzle } from '../content/schema.ts';
 import type { DialogueSource, DialogueState } from '../narrative/dialogue.ts';
+import { completeEpisodes } from '../progress/episodes.ts';
 import { settleEvents } from '../progress/events.ts';
 import { addFact, factsOf, type SaveData } from '../progress/save.ts';
-import { mulberry32 } from '../signal/rng.ts';
 import { evaluateAnswer, type Answer } from './evaluate.ts';
 
 export interface AttemptResult {
@@ -15,7 +15,7 @@ export interface AttemptResult {
 }
 
 export interface GameOptions {
-  content: Content;
+  content: Pick<Content, 'puzzles' | 'episodes' | 'events' | 'transmissions' | 'archives'>;
   data: SaveData;
   persist(data: SaveData): void;
 }
@@ -49,21 +49,6 @@ export function createGame({ content, data, persist }: GameOptions): Game {
     return added;
   };
 
-  const completeEpisodes = (): string[] => {
-    const added: string[] = [];
-    for (const episode of content.episodes) {
-      if (data.episodes.includes(episode.id)) continue;
-      if (!episode.puzzles.every((id) => data.puzzles.includes(id))) continue;
-      added.push(...grant([`completed:${episode.id}`, ...episode.grants]));
-      if (data.profile.designation === null) {
-        const suffix = Math.floor(mulberry32(data.profile.seed)() * 0xffff);
-        const hex = suffix.toString(16).toUpperCase().padStart(4, '0');
-        data.profile.designation = `${episode.designationPrefix}-${hex}`;
-      }
-    }
-    return added;
-  };
-
   const game: Game = {
     data,
     facts: () => factsOf(data),
@@ -82,7 +67,7 @@ export function createGame({ content, data, persist }: GameOptions): Game {
         return { status: 'wrong', feedback, granted: [], ...base };
       }
       const granted = grant([`solved:${id}`, ...target.grants]);
-      granted.push(...completeEpisodes());
+      granted.push(...completeEpisodes(content.episodes, data).granted);
       settleEvents(content.events, data);
       persist(data);
       return { status: 'solved', feedback, granted, ...base };

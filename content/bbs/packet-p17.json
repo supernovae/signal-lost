@@ -10,5 +10,10 @@
     "Held copies go in the queue with their signatures. If the relay drops the line again, check the receipt before sending another copy.",
     "Acknowledge receipt. Even if it took a while.",
     "Signed P17"
-  ]
+  ],
+  "dispatchCopy": {
+    "recordId": "P17",
+    "seal": "P17",
+    "deliveryIndex": 141
+  }
 }

@@ -6,7 +6,77 @@
   "title": "MAINTENANCE ANNEX",
   "requires": "flag:spool-02-restored",
   "description": [
-    "SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1",
     "Verify stored records, admit verified records to the queue, then write a separate replay copy."
-  ]
+  ],
+  "reconstructionCheck": {
+    "manifestId": "R07-SPOOL-02",
+    "prerequisites": [
+      {
+        "fact": "flag:spool-02-restored",
+        "missingEvidence": "Restore SPOOL-02 at the recovery console first."
+      },
+      {
+        "fact": "flag:manifest-r07-spool-02",
+        "missingEvidence": "Obtain the verified R07-SPOOL-02 manifest from Signal Hunter or Relay Trader."
+      }
+    ],
+    "fragmentMessageIds": ["annex-signature-checker", "annex-queue-reader", "annex-replay-writer"],
+    "recipe": ["SC-1", "QR-1", "RW-1"],
+    "custody": {
+      "originalsMessageId": "q17-originals",
+      "dispatchMessageIds": ["packet-p17", "ghost-g17"],
+      "holdReceiptMessageId": "q17-hold-receipt"
+    },
+    "responseMessageId": "spool-02-replay-receipt",
+    "episodeId": "episode.002",
+    "choices": [
+      {
+        "operation": "REPLAY",
+        "evidenceMode": "PRESERVE",
+        "result": "Reconstruct readable dispatch in a separate copy and keep the sealed originals.",
+        "feedback": "Both signed terms are satisfied."
+      },
+      {
+        "operation": "REPLAY",
+        "evidenceMode": "REPLACE",
+        "result": "Write readable dispatch over the originals.",
+        "feedback": "REPLACE would overwrite the sealed originals and lose their custody record."
+      },
+      {
+        "operation": "RESET",
+        "evidenceMode": "PRESERVE",
+        "result": "Keep the sealed originals and leave the working spool empty.",
+        "feedback": "RESET leaves an empty spool. The manifest requires a readable replay."
+      },
+      {
+        "operation": "RESET",
+        "evidenceMode": "REPLACE",
+        "result": "Clear the working spool and the sealed originals.",
+        "feedback": "RESET leaves no readable replay, and REPLACE destroys the original custody record."
+      }
+    ],
+    "copy": {
+      "compare": "COMPARE",
+      "missingFragments": "Open Retained source fragments and review each module boundary before comparing the recipe.",
+      "missingComparison": "COMPARE the retained fragments and recipe with the verified manifest first.",
+      "mismatch": "Reconstruction blocked. The retained modules, recipe, or custody evidence disagree with the signed record.",
+      "chooseMode": "Select a compatibility choice or type RECONSTRUCT <operation> / <evidence mode>.",
+      "comparisonHeading": "RETAINED MODULES CHECKED AGAINST THE MANIFEST",
+      "recipeHeading": "SPOOL-02 BUILD RECIPE: {order}",
+      "audit": "VIEW REPLAY AUDIT",
+      "auditHeading": "LOCAL REPLAY AUDIT",
+      "auditRecord": "DELIVERY {delivery} / {record} | REPLAY SEAL {replay} = ORIGINAL SEAL {original}",
+      "auditNote": "RETAINED {sender} NOTE / {record}: {note}",
+      "saveRefused": "LOCAL SAVE UNAVAILABLE. Replay was not committed. Select the compatible mode again to retry."
+    },
+    "credits": {
+      "label": "CONTRIBUTOR RECORD",
+      "close": "CLOSE CONTRIBUTOR RECORD",
+      "heading": "Contributor record",
+      "review": "Real additions are checked and independently reviewed before inclusion in the shipped game.",
+      "maintainersOnly": "This build credits maintainers. It contains no reviewed community additions.",
+      "empty": "No reviewed contributor credits appear in this build.",
+      "loadFailure": "The contributor record could not be loaded."
+    }
+  }
 }

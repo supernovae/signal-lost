@@ -1,0 +1,5 @@
+{
+  "id": "spool-02-reconstructed",
+  "when": "bbs-read:spool-02-replay-receipt",
+  "effects": [{ "kind": "post-bulletin", "messageId": "spool-02-replay-receipt" }]
+}

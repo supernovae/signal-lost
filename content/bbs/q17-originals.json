@@ -12,5 +12,21 @@
     "G17 | GHOST | preservation note | seal intact.",
     "Keep the signature with the note when you move it. Otherwise the copy remembers the words and forgets whose they were.",
     "Both sealed originals remain read-only."
+  ],
+  "sealedOriginals": [
+    {
+      "recordId": "P17",
+      "seal": "P17",
+      "readOnly": true,
+      "sender": "PACKET",
+      "note": "Acknowledge receipt. Even if it took a while."
+    },
+    {
+      "recordId": "G17",
+      "seal": "G17",
+      "readOnly": true,
+      "sender": "GHOST",
+      "note": "Keep the signature with the note when you move it. Otherwise the copy remembers the words and forgets whose they were."
+    }
   ]
 }

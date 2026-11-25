@@ -1,0 +1,16 @@
+{
+  "kind": "message",
+  "id": "spool-02-replay-receipt",
+  "board": "deep-field",
+  "title": "SPOOL-02 replay receipt",
+  "from": "SPOOL-02 / LOCAL AUDIT",
+  "date": "RECOVERED RECORD",
+  "presentation": "recovered",
+  "body": [
+    "SPOOL-02 / REPLAY / PRESERVE: separate local dispatch copy verified.",
+    "P17 and G17 were composed before departure and delivered later under migration hold.",
+    "The archived originals retain their seals and remain read-only.",
+    "Compare the delivery indexes and seals in the Maintenance Annex replay audit."
+  ],
+  "eventOnly": true
+}

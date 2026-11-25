@@ -91,6 +91,20 @@ owned by the endpoint with `eventOnly: true`. Give it one exclusive board check 
 event that posts it with `when` set to its own `bbs-read:<message id>` fact. The first
 success records that read. Later successes show the same message again.
 
+A board can define one `reconstructionCheck` in place of a search, submit or order check.
+Its `prerequisites` name saved facts, including the shared manifest reward. Give every
+`fragmentMessageIds` entry a public thread on the same board and `retainedModule` data
+with the module name, seal, boundary and dependency seals. The `recipe` lists seals in
+build order. Both the validator and COMPARE check those fields against the same signed
+`content/code-doors/manifest-r07-spool-02.jsonc` data that supplies the doors' manifest display.
+
+Author all operation and evidence-mode pairs with their consequences and retry feedback.
+The manifest determines which pair can proceed. The `custody` references identify the
+sealed originals, indexed dispatch messages and hold receipt. The replay verifies original
+and dispatch seals before emitting the event-only response. The referenced episode must
+require that response's read fact and all declared prerequisites. The optional `credits`
+copy opens the build-generated contributor record after completion.
+
 In `content/capabilities/`, give each capability an `id`, a `kind`, an existing saved `fact`, and
 a `target`. Use `kind: "research"` with a target such as
 `{ "kind": "archive", "id": "archive.example" }` or `{ "kind": "board", "id": "board.example" }`.
@@ -163,6 +177,12 @@ The loader checks references and walks reachable checkpoints, up to 4,096 states
 | `puzzles/`, `episodes/` | Puzzles and episodes. These need more care: read `docs/game-design.md` first, because it has the solutions.             |
 
 A new kind of puzzle needs an engine change. A new transmission, archive entry, or community package does not.
+
+Episodes complete when all listed puzzles are solved and every optional `completionFacts`
+entry holds. Use a nonempty fact list with `"puzzles": []` for a fact-only episode.
+Puzzle-only episodes require a designation prefix. A prefix is optional when the episode
+also has fact requirements. An event on `completed:<episode id>` can publish a bulletin
+after the ending becomes available. [Chapter 2 episode](../content/episodes/episode-002.json)
 
 ## Tone
 

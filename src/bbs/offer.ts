@@ -1,14 +1,22 @@
 import { evaluate, type Condition } from '../content/conditions.ts';
-import type { Archive, BbsBoard, BbsRecord, BbsThread, Content } from '../content/schema.ts';
+import type {
+  Archive,
+  BbsBoard,
+  BbsMessage,
+  BbsRecord,
+  BbsThread,
+  Content,
+} from '../content/schema.ts';
 
 export type Message = Pick<
   Archive,
   'title' | 'from' | 'date' | 'body' | 'origin' | 'presentation' | 'attribution'
-> & {
-  key: string;
-  requires?: Condition;
-  eventOnly?: boolean;
-};
+> &
+  Pick<BbsMessage, 'retainedModule' | 'sealedOriginals' | 'dispatchCopy'> & {
+    key: string;
+    requires?: Condition;
+    eventOnly?: boolean;
+  };
 export type MessageBoard = Extract<BbsRecord, { kind: 'message-board' }>;
 export type Profile = Extract<BbsRecord, { kind: 'profile' }>;
 type Secret = Extract<BbsRecord, { kind: 'secret' }>;
@@ -26,10 +34,17 @@ export interface BbsOffer {
   artifacts: Content['artifacts'];
   characters: Content['characters'];
   sectors: Content['sectors'];
+  repairManifests: Content['repairManifests'];
   initialFacts: ReadonlySet<string>;
 }
 
-export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOffer | undefined {
+export function getBbsOffer(
+  content: Pick<
+    Content,
+    'bbs' | 'accessLevels' | 'archives' | 'artifacts' | 'characters' | 'sectors' | 'repairManifests'
+  >,
+  facts: ReadonlySet<string>,
+): BbsOffer | undefined {
   const board = content.bbs.find(
     (entry) => entry.kind === 'board' && evaluate(entry.requires, facts),
   );
@@ -81,6 +96,7 @@ export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOf
     artifacts: content.artifacts.filter((artifact) => artifact.bbsBoard === board.id),
     characters: content.characters,
     sectors: content.sectors,
+    repairManifests: content.repairManifests,
     initialFacts: facts,
   };
 }
