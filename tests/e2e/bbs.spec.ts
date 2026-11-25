@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import type { Page } from '@playwright/test';
+import type { Locator, Page, Request } from '@playwright/test';
 import relayTrivia from '../../content/doors/relay-trivia.json' with { type: 'json' };
 import { freshSave } from '../../src/progress/save.ts';
 import { expect, test } from './fixtures.ts';
-import { SAVE_KEY, seedSaveOnce } from './helpers.ts';
+import { completeEpisode, disableWebGl, SAVE_KEY, seedSaveOnce } from './helpers.ts';
 
 const completedV1 = readFileSync(
   new URL('../fixtures/episode-000-complete-v1.json', import.meta.url),
@@ -23,6 +23,20 @@ async function typeCommand(page: Page, prompt: 'OBS>' | 'BBS>', command: string)
   await page.keyboard.press('Enter');
 }
 
+async function focusWithKeyboard(
+  page: Page,
+  target: Locator,
+  key: 'Tab' | 'Shift+Tab',
+  steps: number,
+): Promise<void> {
+  for (let i = 0; i < steps; i++) {
+    if (await target.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press(key);
+  }
+  await expect(target).toBeFocused();
+  await expect(target).toBeInViewport();
+}
+
 async function activateBbsButton(page: Page, input: 'keyboard' | 'pointer', name: string) {
   const target = page.getByRole('button', { name, exact: true });
   await expect(target).toBeVisible();
@@ -35,12 +49,7 @@ async function activateBbsButton(page: Page, input: 'keyboard' | 'pointer', name
     .getByRole('navigation', { name: 'Tools' })
     .getByRole('button')
     .count();
-  for (let i = 0; i < controls; i++) {
-    await page.keyboard.press('Shift+Tab');
-    if (await target.evaluate((element) => element === document.activeElement)) break;
-  }
-  await expect(target).toBeFocused();
-  await expect(target).toBeInViewport();
+  await focusWithKeyboard(page, target, 'Shift+Tab', controls);
   await page.keyboard.press('Enter');
 }
 
@@ -557,60 +566,171 @@ test('restores SPOOL-02 and returns to the Annex by keyboard after reload', asyn
 
 const finaleJourneys = [
   {
+    title: 'Chapter 2 release journey from the version 1 fixture',
+    start: 'version-1',
     proof: 'headers',
     door: 'signal-hunter',
     input: 'keyboard',
     motion: 'explicit-reduce',
+    forge: true,
+  },
+  {
+    title: 'Chapter 2 release journey from a clean save',
+    start: 'clean',
+    proof: 'headers',
+    door: 'relay-trader',
+    input: 'pointer',
+    motion: 'animate',
     forge: false,
   },
-  { proof: 'headers', door: 'relay-trader', input: 'pointer', motion: 'animate', forge: true },
   {
+    title: 'Chapter 2 from Episode 000 through custody and signal-hunter by pointer',
+    start: 'fallback',
     proof: 'custody',
     door: 'signal-hunter',
     input: 'pointer',
     motion: 'system-reduce',
     forge: true,
   },
-  { proof: 'custody', door: 'relay-trader', input: 'keyboard', motion: 'animate', forge: false },
+  {
+    title: 'Chapter 2 from Episode 000 through custody and relay-trader by keyboard',
+    start: 'animated',
+    proof: 'custody',
+    door: 'relay-trader',
+    input: 'keyboard',
+    motion: 'animate',
+    forge: false,
+  },
 ] as const;
 
-for (const { proof, door, input, motion, forge } of finaleJourneys) {
-  test(`Chapter 2 from Episode 000 through ${proof} and ${door} by ${input}`, async ({
-    page,
-    baseURL,
-  }) => {
-    const legacy = JSON.parse(completedV1) as {
-      puzzles: string[];
-      flags: string[];
-      preferences: Partial<ReturnType<typeof freshSave>['preferences']>;
-    };
-    if (!forge) {
-      legacy.puzzles = legacy.puzzles.filter((id) => id !== 'puzzle.service');
-      legacy.flags = legacy.flags.filter(
-        (id) => id !== 'service-panel-open' && id !== 'forge-opened',
-      );
-    }
+async function expectTerminalLayout(
+  page: Page,
+  screen: string,
+  output: Locator,
+  control: Locator,
+): Promise<void> {
+  const terminal = page.getByRole('region', { name: 'Terminal' });
+  const log = terminal.getByRole('log');
+  const tools = terminal.getByRole('navigation', { name: 'Tools' });
+  const prompt = terminal.getByLabel('BBS>');
+  const tolerance = 2;
+  const terminalBox = (await terminal.boundingBox())!;
+  expect(terminalBox, `${screen} terminal bounds`).toBeTruthy();
+  await expect(terminal, `${screen} terminal in viewport`).toBeInViewport({ ratio: 1 });
+  let previousBottom = terminalBox.y;
+  for (const [name, region] of [
+    ['log', log],
+    ['Tools', tools],
+    ['prompt', terminal.locator('.terminal-prompt')],
+  ] as const) {
+    const box = (await region.boundingBox())!;
+    expect(box, `${screen} ${name} bounds`).toBeTruthy();
+    expect(box.height, `${screen} ${name} height`).toBeGreaterThan(0);
+    expect(box.width, `${screen} ${name} width`).toBeGreaterThan(0);
+    expect(box.x, `${screen} ${name} left edge`).toBeGreaterThanOrEqual(terminalBox.x - tolerance);
+    expect(box.x + box.width, `${screen} ${name} right edge`).toBeLessThanOrEqual(
+      terminalBox.x + terminalBox.width + tolerance,
+    );
+    expect(box.y, `${screen} ${name} top edge`).toBeGreaterThanOrEqual(previousBottom - tolerance);
+    previousBottom = box.y + box.height;
+    expect(previousBottom, `${screen} ${name} bottom edge`).toBeLessThanOrEqual(
+      terminalBox.y + terminalBox.height + tolerance,
+    );
+    const overflow = await region.evaluate((element) => element.scrollWidth - element.clientWidth);
+    expect(overflow, `${screen} ${name} horizontal overflow`).toBeLessThanOrEqual(tolerance);
+  }
+  await expect(prompt, `${screen} prompt is reachable`).toBeFocused();
+  await expect(prompt, `${screen} prompt is readable`).toBeInViewport({ ratio: 0.99 });
+  await expect(output, `${screen} current output inside the scrollable log`).toBeInViewport({
+    ratio: 0.99,
+  });
+  const controls = await tools.getByRole('button').count();
+  await focusWithKeyboard(page, control, 'Shift+Tab', controls);
+  await expect(control, `${screen} focused control inside Tools`).toBeInViewport({ ratio: 0.99 });
+  await focusWithKeyboard(page, prompt, 'Tab', controls);
+}
+
+for (const { title, start, proof, door, input, motion, forge } of finaleJourneys) {
+  test(title, async ({ page, baseURL }) => {
+    const clean = start === 'clean';
+    const version1 = start === 'version-1';
+    const fallback = start === 'fallback';
     const animate = motion === 'animate';
-    legacy.preferences.reducedMotion = motion === 'system-reduce' ? null : !animate;
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(error.message));
     await page.emulateMedia({
       reducedMotion: motion === 'system-reduce' ? 'reduce' : 'no-preference',
     });
-    await seedSaveOnce(page, JSON.stringify(legacy));
+    const legacy = JSON.parse(completedV1) as Pick<
+      ReturnType<typeof freshSave>,
+      | 'episodes'
+      | 'puzzles'
+      | 'transmissions'
+      | 'archives'
+      | 'locations'
+      | 'flags'
+      | 'seenLines'
+      | 'failures'
+      | 'preferences'
+    > & { designation: string };
+    let designation = legacy.designation;
+    if (version1) {
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await seedSaveOnce(page, completedV1);
+    } else if (!clean) {
+      if (!forge) {
+        legacy.puzzles = legacy.puzzles.filter((id) => id !== 'puzzle.service');
+        legacy.flags = legacy.flags.filter(
+          (id) => id !== 'service-panel-open' && id !== 'forge-opened',
+        );
+      }
+      legacy.preferences.reducedMotion = fallback ? null : false;
+      if (fallback) {
+        legacy.preferences.effects = true;
+        await disableWebGl(page);
+      }
+      await seedSaveOnce(page, JSON.stringify(legacy));
+    }
 
+    const requestedAssets = new Set<string>();
     const successfulAssets = new Set<string>();
+    const pendingRequests = new Set<Request>();
     const assetProblems: string[] = [];
     const base = new URL(baseURL!);
-    page.on('requestfailed', (request) => assetProblems.push(request.url()));
+    const withinSite = (url: URL) =>
+      url.origin === base.origin && url.pathname.startsWith('/signal-lost/');
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
+      requestedAssets.add(url.pathname);
+      pendingRequests.add(request);
+      if (!withinSite(url)) assetProblems.push(`outside Pages base: ${url.href}`);
+    });
+    page.on('requestfinished', (request) => pendingRequests.delete(request));
+    page.on('requestfailed', (request) => {
+      pendingRequests.delete(request);
+      assetProblems.push(`requestfailed: ${request.url()} (${request.failure()?.errorText})`);
+    });
     page.on('response', (response) => {
       const url = new URL(response.url());
-      if (!response.ok() || url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
-        assetProblems.push(response.url());
-      } else {
+      if (response.status() >= 400) {
+        assetProblems.push(`HTTP ${response.status()}: ${url.href}`);
+      } else if (response.ok() && withinSite(url)) {
         successfulAssets.add(url.pathname);
       }
     });
-    const loaded = (chunk: RegExp) => [...successfulAssets].some((path) => chunk.test(path));
-    const creditChunk = /\/contributor-view-[^/]+\.js$/;
+    const chunk = (name: string, extension = 'js') =>
+      new RegExp(`/assets/${name}-[^/]+\\.${extension}$`);
+    const loaded = (name: string, extension?: string) =>
+      [...successfulAssets].some((path) => chunk(name, extension).test(path));
+    const expectDeferred = (...names: string[]) => {
+      for (const name of names) {
+        expect(
+          [...requestedAssets].filter((path) => chunk(name).test(path)),
+          `${name} requests before use`,
+        ).toEqual([]);
+      }
+    };
     const log = page.getByRole('log');
     const system = log.locator('.system').last();
     const doorLog = log.locator('.door').last();
@@ -620,22 +740,40 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     const controls = () =>
       page.getByRole('navigation', { name: 'Tools' }).getByRole('button').allTextContents();
     const saved = () => page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
+    const progress = async () => JSON.parse((await saved())!) as ReturnType<typeof freshSave>;
+    const prompt = page.getByLabel('BBS>');
+    const body = page.locator('body');
     const entry = page.getByRole('button', { name: /UNASSIGNED \/ routing-table entry/ });
     const receipt = page.getByRole('button', { name: /SPOOL-02 replay receipt/ });
     const annex = 'MAINTENANCE ANNEX';
     const mode = 'REPLAY / PRESERVE';
     const intro = 'SPOOL-02: LOCAL REPLAY VERIFIED';
     const reveal = 'PACKET and GHOST wrote those notes before they disappeared.';
+    const auditP17 = 'DELIVERY 141 / P17 | REPLAY SEAL P17 = ORIGINAL SEAL P17';
+    const auditG17 = 'DELIVERY 142 / G17 | REPLAY SEAL G17 = ORIGINAL SEAL G17';
+    const packetNote = 'RETAINED PACKET NOTE / P17: Acknowledge receipt.';
+    const ghostNote = 'RETAINED GHOST NOTE / G17: Keep the signature';
 
     async function signIn() {
       if (input === 'keyboard') await typeCommand(page, 'OBS>', 'CONNECT');
       else await connect(page).click();
-      await activate('USE DESIGNATION (OBS-02FF)');
+      await activate(`USE DESIGNATION (${designation})`);
       await expect(system).toContainText('DEEP FIELD MAIN MENU');
+      await expect(prompt).toBeFocused();
+    }
+
+    async function expectReducedMotion() {
+      await expect(body).toHaveAttribute('data-motion', 'off');
+      await expect(page.locator('.interference')).toBeHidden();
+    }
+
+    async function expectFallback() {
+      await expect(body).toHaveAttribute('data-render', 'fallback');
+      await expect(page.locator('.crt')).toHaveCSS('background-image', /radial-gradient/);
     }
 
     async function openAnnex() {
-      await activate('MAIN MENU');
+      if (await button('MAIN MENU').isVisible()) await activate('MAIN MENU');
       await activate('DIRECTORY');
       await activate(annex);
     }
@@ -648,9 +786,90 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     }
 
     await page.goto('./');
+    await expect(page.getByRole('button', { name: 'Join the network' })).toBeVisible();
+    if (clean) {
+      expect(await progress()).toMatchObject({ episodes: [], puzzles: [] });
+    }
+    if (version1) {
+      const { designation: originalDesignation, ...originalProgress } = legacy;
+      expect(await progress()).toMatchObject({
+        ...originalProgress,
+        schemaVersion: 2,
+        profile: { designation: originalDesignation },
+      });
+      await expect(body).toHaveAttribute('data-render', 'webgl');
+    }
+    if (fallback) {
+      await expectFallback();
+      await expect(body).toHaveAttribute('data-effects', 'on');
+    }
     await joinWithEnter(page);
+    if (clean) {
+      await expect(connect(page)).toHaveCount(0);
+      await typeCommand(page, 'OBS>', 'CONNECT');
+      await expect(log).toContainText('UNKNOWN COMMAND: CONNECT.');
+      await completeEpisode(page);
+      const assignment = page
+        .locator('.ending')
+        .getByText(/^OBSERVER DESIGNATION ASSIGNED: OBS-[0-9A-F]{4}$/);
+      await expect(assignment).toBeVisible({ timeout: 30_000 });
+      designation = (await assignment.innerText()).replace('OBSERVER DESIGNATION ASSIGNED: ', '');
+      await button('CONTINUE').click();
+      await expect(connect(page)).toBeVisible();
+
+      await page.reload();
+      await joinWithEnter(page);
+      await expect(page.locator('.ending')).toHaveCount(0);
+      await typeCommand(page, 'OBS>', 'STATUS');
+      await expect(log).toContainText(`DESIGNATION: ${designation}`);
+    }
+    await expect(connect(page)).toBeVisible();
+    if (version1) {
+      await expect(log).not.toContainText('Your saved progress could not be loaded and was reset.');
+      expect(loaded('index')).toBe(true);
+      expect(loaded('index', 'css')).toBe(true);
+      expectDeferred(
+        'connection',
+        'signal-hunter',
+        'relay-trader',
+        'code-door-content',
+        'contributor-view',
+      );
+    }
     const hubTools = await controls();
     await signIn();
+    if (!animate) await expectReducedMotion();
+    if (version1) {
+      await expectTerminalLayout(
+        page,
+        'Deep Field main menu',
+        system.getByText(/^ACCESS LEVEL:/),
+        button('MESSAGES'),
+      );
+      await activate('MESSAGES');
+      await expect(log).toContainText('READ <NUMBER>');
+      await type('READ 1');
+      const message = log.locator('.history').last();
+      await expect(message).toContainText("I'm leaving the modem plugged in.");
+      await activate('MAIN MENU');
+      await activate('DOORS');
+      await activate('[OPEN relay-trivia] RELAY TRIVIA');
+      const question = doorLog.getByText('Which port gets the dummy load for a bench-only test?');
+      await expect(question).toBeVisible();
+      await expectTerminalLayout(
+        page,
+        'Relay Trivia question',
+        question,
+        page.getByRole('button', { name: /\[2\] The transmitter output/ }),
+      );
+      await type('2');
+      await expect(doorLog).toContainText('Which kit lets you monitor the receiver');
+      await type('1');
+      await expect(doorLog).toContainText('DRILL COMPLETE. TRAINING RECORD LOGGED.');
+      await activate('EXIT');
+      await expect(system).toContainText('RELAY DRILL: COMPLETE');
+      await expect(prompt).toBeFocused();
+    }
     await unpublished();
     await activate('MAIN MENU');
     await activate('BOARDS');
@@ -683,11 +902,20 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await activate('DOORS');
     await activate('[OPEN forgotten-archive] THE FORGOTTEN ARCHIVE');
     await expect(doorLog).toContainText('ARCHIVE VESTIBULE');
+    if (version1) {
+      await expectTerminalLayout(
+        page,
+        'Forgotten Archive vestibule',
+        doorLog.getByText('ARCHIVE VESTIBULE', { exact: true }),
+        button('[TRAINING SHELF] Visit training shelf'),
+      );
+    }
     await type('TRAINING SHELF');
     for (const fragment of ['SEAL', 'ROUTE', 'ACK']) await type(`INSPECT ${fragment} FRAGMENT`);
     await type('SEAL / ROUTE / ACK');
     await expect(doorLog).toContainText('PROCEDURE LEARNED.');
     await activate('EXIT');
+    await expect(prompt).toBeFocused();
     await activate('DIRECTORY');
     await activate('RECOVERY CONSOLE');
     if (input === 'keyboard') await type('APPLY SEAL / ROUTE / ACK');
@@ -698,10 +926,31 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await expect(log).toContainText('SPOOL-02 WORKING SPOOL RESTORED');
     await activate('MAIN MENU');
     await expect(system).toContainText('ACCESS LEVEL: MAINTAINER');
+    if (clean) {
+      await page.reload();
+      await joinWithEnter(page);
+      await expect(page.locator('.ending')).toHaveCount(0);
+      await signIn();
+      await expect(system).toContainText('ACCESS LEVEL: MAINTAINER');
+      await openAnnex();
+      await expect(system).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+      await activate('MAIN MENU');
+    }
     await activate('DOORS');
+    await expect(button('[OPEN signal-hunter] SIGNAL HUNTER')).toBeVisible();
+    await expect(button('[OPEN relay-trader] RELAY TRADER')).toBeVisible();
+    if (version1) expectDeferred('signal-hunter', 'relay-trader', 'code-door-content');
     if (door === 'signal-hunter') {
       await activate('[OPEN signal-hunter] SIGNAL HUNTER');
       await expect(doorLog).toContainText('H3 | SPOOL-02 / INTACT');
+      if (version1) {
+        await expectTerminalLayout(
+          page,
+          'Signal Hunter traces',
+          doorLog.getByText(/^H3 \| SPOOL-02 \/ INTACT/),
+          page.getByRole('button', { name: /^\[VERIFY H3\]/ }),
+        );
+      }
       await type('VERIFY H3');
     } else {
       await activate('[OPEN relay-trader] RELAY TRADER');
@@ -709,8 +958,44 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
       for (const command of ['CLAIM ENVELOPE', 'STAMP ACK SPOOL-02', 'EXCHANGE'])
         await type(command);
     }
-    await expect(doorLog).toContainText('SIGNED REPAIR MANIFEST R07-SPOOL-02');
+    const manifestTitle = 'SIGNED REPAIR MANIFEST R07-SPOOL-02';
+    await expect(doorLog).toContainText(manifestTitle);
+    const manifestLines = doorLog
+      .getByText(manifestTitle, { exact: true })
+      .locator('xpath=following-sibling::p');
+    const earnedManifest = await manifestLines.allTextContents();
+    expect(earnedManifest).toContain('BUILD ORDER: SC-1 → QR-1 → RW-1');
     await activate('EXIT');
+    await expect(prompt).toBeFocused();
+    if (version1) {
+      expectDeferred('relay-trader');
+      expect(
+        (await progress()).flags.filter((flag) => flag === 'manifest-r07-spool-02'),
+      ).toHaveLength(1);
+      await activate('DOORS');
+      await activate('[OPEN relay-trader] RELAY TRADER');
+      await expect(doorLog).toContainText('NULL QUAY acknowledgement desk');
+      await expectTerminalLayout(
+        page,
+        'Relay Trader exchange desk',
+        doorLog.getByText(/NULL QUAY acknowledgement desk/),
+        button('[CLAIM ENVELOPE] Claim free envelope'),
+      );
+      for (const command of ['CLAIM ENVELOPE', 'STAMP ACK SPOOL-02', 'EXCHANGE']) {
+        await type(command);
+      }
+      await expect(doorLog).toContainText(
+        'Exchange receipt: ACK SPOOL-02 accepted for R07-SPOOL-02.',
+      );
+      await expect(doorLog).toContainText(manifestTitle);
+      expect(await manifestLines.allTextContents()).toEqual(earnedManifest);
+      expect(
+        (await progress()).flags.filter((flag) => flag === 'manifest-r07-spool-02'),
+      ).toHaveLength(1);
+      await activate('EXIT');
+      await expect(prompt).toBeFocused();
+      expect(loaded('relay-trader')).toBe(true);
+    }
     await unpublished();
     await openAnnex();
     await expect(system).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
@@ -727,6 +1012,16 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await expect(system).toContainText(
       'RW-1 / replay-writer | REQUIRES: QR-1 and SC-1 | BOUNDARY: COMPLETE',
     );
+    if (version1) {
+      await expectTerminalLayout(
+        page,
+        'Annex comparison',
+        system.getByText('RW-1 / replay-writer | REQUIRES: QR-1 and SC-1 | BOUNDARY: COMPLETE', {
+          exact: true,
+        }),
+        button(mode),
+      );
+    }
     await activate('REPLAY / REPLACE');
     await expect(system).toContainText('REPLACE would overwrite the sealed originals');
     await expect(page.locator('body')).toHaveAttribute('data-scene', 'bbs');
@@ -734,19 +1029,20 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await openAnnex();
     await activate('COMPARE');
 
-    if (animate) {
+    const checkAnimationOrder = start === 'animated';
+    if (checkAnimationOrder) {
       const endingClock = new Date('2025-01-01T00:00:00Z');
       await page.clock.install({ time: endingClock });
       await page.clock.pauseAt(new Date(endingClock.getTime() + 10_000));
     }
-    if (input === 'pointer') await button(mode).click({ force: animate });
+    if (input === 'pointer') await button(mode).click();
     else await type(`RECONSTRUCT ${mode}`);
     await expect(page.locator('body')).toHaveAttribute('data-scene', 'ending');
     const ending = page.locator('.ending').getByRole('log');
     const proceed = button('CONTINUE');
     await expect(ending).toHaveAttribute('aria-live', 'polite');
     await expect(proceed).toBeFocused();
-    if (animate) {
+    if (checkAnimationOrder) {
       await page.clock.runFor(1);
       await expect(ending).toContainText(intro);
       await expect(ending).not.toContainText(reveal);
@@ -755,27 +1051,29 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
       await page.clock.runFor(700);
       await expect(ending).toContainText(reveal);
       await expect(ending).not.toContainText('LOCAL REPLAY AUDIT');
+    } else if (animate) {
+      await expect(ending).toContainText(ghostNote, { timeout: 30_000 });
+      for (const line of [intro, reveal, auditP17, auditG17, packetNote]) {
+        await expect(ending).toContainText(line);
+      }
     } else {
-      expect(await ending.textContent()).toContain(intro);
-      expect(await ending.textContent()).toContain(reveal);
-      expect(await ending.textContent()).toContain(
-        'DELIVERY 141 / P17 | REPLAY SEAL P17 = ORIGINAL SEAL P17',
-      );
-      expect(await ending.textContent()).toContain(
-        'DELIVERY 142 / G17 | REPLAY SEAL G17 = ORIGINAL SEAL G17',
-      );
+      const lines = await ending.textContent();
+      for (const line of [intro, reveal, auditP17, auditG17, packetNote, ghostNote]) {
+        expect(lines).toContain(line);
+      }
+      await expectReducedMotion();
     }
-    const completed = JSON.parse((await saved())!) as ReturnType<typeof freshSave>;
+    const completed = await progress();
     expect(completed.episodes).toEqual(['episode.000', 'episode.002']);
-    expect(completed.profile.designation).toBe('OBS-02FF');
+    expect(completed.profile.designation).toBe(designation);
     expect(completed.flags.filter((flag) => flag === 'manifest-r07-spool-02')).toHaveLength(1);
     expect(
       completed.flags.filter((flag) => /^deferred-(headers|custody)-verified$/.test(flag)),
     ).toEqual([proof === 'headers' ? 'deferred-headers-verified' : 'deferred-custody-verified']);
     expect(completed.flags.includes('forge-opened')).toBe(forge);
     if (input === 'keyboard') await page.keyboard.press('Enter');
-    else await proceed.click({ force: animate });
-    if (animate) {
+    else await proceed.click();
+    if (checkAnimationOrder) {
       await page.clock.fastForward(30_000);
       await page.clock.resume();
     }
@@ -786,26 +1084,38 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await typeCommand(page, 'OBS>', 'NETWORK MAP');
     const map = page.getByRole('group', { name: 'Network map' });
     await expect(map.getByRole('button', { name: 'SPOOL-02', exact: true })).toBeVisible();
-    await map.getByRole('button', { name: 'SILENT OBSERVATORY' }).click();
+    const observatory = map.getByRole('button', { name: 'SILENT OBSERVATORY' });
+    if (input === 'keyboard') {
+      await focusWithKeyboard(
+        page,
+        observatory,
+        'Shift+Tab',
+        hubTools.length + (await map.getByRole('button').count()),
+      );
+      await page.keyboard.press('Enter');
+      await focusWithKeyboard(page, page.getByLabel('OBS>'), 'Tab', hubTools.length + 2);
+    } else {
+      await observatory.click();
+      await page.getByLabel('OBS>').focus();
+    }
     await expect(log).toContainText('NO CARRIER');
     await expect(log).toContainText('2 OBSERVERS REQUIRED');
 
-    await page.getByLabel('OBS>').focus();
     await signIn();
     await activate('MESSAGES');
     await expect(receipt).toContainText('[READ]');
     await expect(entry).toContainText('[NEW]');
-    await entry.click();
+    await activate(await entry.innerText());
     await expect(log.locator('.recovered').last()).toContainText('REGISTERED OPERATOR: [EMPTY]');
     await expect(log.locator('.recovered').last()).toContainText(
       'Who prepared a destination with no registered operator?',
     );
     await openAnnex();
     await activate('VIEW REPLAY AUDIT');
-    await expect(system).toContainText('RETAINED PACKET NOTE / P17: Acknowledge receipt.');
-    await expect(system).toContainText('RETAINED GHOST NOTE / G17: Keep the signature');
+    await expect(system).toContainText(packetNote);
+    await expect(system).toContainText(ghostNote);
     const creditsBefore = await saved();
-    expect(loaded(creditChunk)).toBe(false);
+    expectDeferred('contributor-view');
     await activate('CONTRIBUTOR RECORD');
     const credits = page.getByRole('region', { name: 'Contributor record' });
     await expect(credits).toBeVisible();
@@ -820,13 +1130,12 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await expect(credits).toHaveCount(0);
     await expect(page.getByLabel('BBS>')).toBeFocused();
     expect(await saved()).toBe(creditsBefore);
-    expect(loaded(creditChunk)).toBe(true);
-    expect(loaded(/\/connection-[^/]+\.js$/)).toBe(true);
-    expect(loaded(new RegExp(`/${door}-[^/]+\\.js$`))).toBe(true);
-    expect(loaded(/\/code-door-content-[^/]+\.js$/)).toBe(true);
-    expect(assetProblems).toEqual([]);
+    for (const name of ['contributor-view', 'connection', door, 'code-door-content']) {
+      expect(loaded(name), `${name} production chunk loaded`).toBe(true);
+    }
 
     await page.reload();
+    if (fallback) await expectFallback();
     await joinWithEnter(page);
     await expect(page.locator('.ending')).toHaveCount(0);
     await signIn();
@@ -835,10 +1144,16 @@ for (const { proof, door, input, motion, forge } of finaleJourneys) {
     await expect(button('[OPEN relay-trader] RELAY TRADER')).toBeVisible();
     await openAnnex();
     await activate('VIEW REPLAY AUDIT');
-    await expect(system).toContainText('DELIVERY 142 / G17 | REPLAY SEAL G17 = ORIGINAL SEAL G17');
+    await expect(system).toContainText(auditP17);
+    await expect(system).toContainText(auditG17);
     await activate('MAIN MENU');
     await activate('MESSAGES');
     await expect(entry).toContainText('[READ]');
+    await expect(receipt).toContainText('[READ]');
+    await page.waitForLoadState('networkidle');
+    await expect.poll(() => [...pendingRequests].map((request) => request.url())).toEqual([]);
+    expect(assetProblems).toEqual([]);
+    expect(pageErrors).toEqual([]);
   });
 }
 

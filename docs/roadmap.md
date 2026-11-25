@@ -1,6 +1,11 @@
 # Roadmap
 
-None of this exists yet, and none of it has a date. Day 0 is Episode 000 and a way to add to it.
+## Playable today
+
+- Episode 000 introduces the Observer Network, ECHO, three core puzzles and the post-episode map. FORGE offers optional contribution links.
+- Deep Field offers local sign-in, boards, messages, profiles, scripted conversations and bulletins that follow player progress.
+- Chapter 2, **The Deferred Line**, takes the Observer through the Deep Field investigation, Archive training, restoration and the Annex replay. Its four doors are Relay Trivia, The Forgotten Archive, Signal Hunter and Relay Trader.
+- The contributor record credits reviewed contributions using data bundled at build time.
 
 ## First missions for contributors
 
@@ -13,12 +18,14 @@ None of this exists yet, and none of it has a date. Day 0 is Episode 000 and a w
 
 ## Possible directions
 
+None of this exists yet, and none of it has a date.
+
 - The Silent Observatory, and what "2 observers required" means.
 - Community signal catalogs, and seeded but deterministic anomalies.
 - Explorable stations and more 3D spaces.
-- New door games and instruments reached from terminals.
+- Additional door games and new instruments for the terminal.
 - Deeper ECHO memory, and an optional model-backed `DialogueSource` that never gates progress.
-- A contribution history shown inside the universe, generated from reviewed repository data.
+- An in-universe timeline of past contributions and releases.
 - Restoration missions driven by GitHub issues.
 - Mysteries that reference this repository's real history.
 - Events tied to major releases.

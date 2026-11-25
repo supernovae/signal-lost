@@ -1,6 +1,6 @@
 # Architecture
 
-The game is a static site: TypeScript, Vite, Three.js, and zod. All story text and solutions are JSON in `content/`. The engine in `src/` knows about kinds of content, not particular puzzles.
+The game is a static site built with TypeScript, Vite, Three.js, and zod. Story text and puzzle data live in `content/`. The engine in `src/` interprets that content through schemas and fact checks.
 
 ## Modules
 
@@ -19,7 +19,7 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 | `src/progress`  | Versioned saves and deterministic event settlement                                            | No                      |
 | `src/audio`     | Synthesized sound, unlocked by a user gesture                                                 | Web Audio only          |
 
-`src/integrations` from the original plan does not exist: FORGE's only external connection is plain links, so nothing needed it.
+FORGE offers optional contribution links. Gameplay and progress use the bundled content and browser storage.
 
 ## How a puzzle runs
 
@@ -32,9 +32,21 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 
 `loadContent` validates a map of parsed content files and returns typed content, file and field errors, and a manifest. The development browser and Node reader load the authored JSON and the shared JSONC repair manifest. In production `scripts/content-plugin.ts` validates the full tree during `npm run build` and fails on errors. The full normalized tree supplies the library export, contributor record and `content-manifest.json` hash. `npm run content:validate` runs the same checks from the command line.
 
-The production entry receives hub content, world events and the ordered endpoint notices used
-to offer CONNECT. CONNECT loads the deferred BBS endpoint records, BBS dialogue, doors, full event
-list and fact-backed episodes. Both scenes use the same save and shared world content.
+GitHub Pages serves `dist/` under `/signal-lost/`. The entry includes Episode 000, hub content,
+world events and endpoint summaries used to offer CONNECT. The Three.js environment loads in
+its own chunk. If WebGL initialization fails, the terminal stays available over a CSS backdrop.
+CONNECT loads the BBS endpoint records, BBS dialogue, declarative doors, full event list,
+repair manifest data and fact-backed episodes. Signal Hunter and Relay Trader each load a
+code-door chunk when selected and share a separate manifest chunk. Opening the contributor
+record loads its view and build-generated data on demand.
+
+## Saves
+
+The hub and BBS use the same local storage save. Opening a version 1 save upgrades it to
+version 2 and preserves Episode 000 progress, the Observer designation, and existing
+preferences. Version 2 stores the designation in the profile and adds BBS read and session
+progress, event history and per-door checkpoints. Rejoining after a reload uses the
+committed save.
 
 ## Network events and dialogue
 
@@ -46,7 +58,8 @@ dependency cycles. The save preserves firing order and bulletin order, and the B
 posted IDs with its read ledger to derive `[NEW]` and `[READ]` in Messages.
 
 For an Annex reconstruction, BBS progress applies the receipt read to a candidate save, settles
-events, checks episode completion, then settles events again to publish completion bulletins.
+events, checks Chapter 2's completion facts, then settles events again to publish its follow-up
+in Messages.
 It writes the candidate once before updating the shared save. Only a committed transition opens
 the shared ending scene through the scene manager. Reopening a completed repair derives its
 audit from the authored evidence and saved completion fact.
@@ -70,6 +83,11 @@ The descriptor declares the door's ID, name, description, author attribution, ve
 The host checks entry requirements and reads the slot keyed by the selected door ID. A missing slot, version mismatch or invalid payload starts a fresh visit. Each successful input or exit writes the validated checkpoint and any newly earned declared rewards together. The BBS evaluates board status conditions against those saved facts. EXIT returns to the signed-in main menu. A lifecycle, module-load or persistence failure also returns there with the board's error message and the previous save intact. [Door host](../src/doors/host.ts)
 
 An adventure checkpoint stores its location, inspected items, local flags and chosen ending. The ending latches for that slot. If the slot is discarded, a fresh visit can choose another ending, so the save may hold both global reward facts. [Adventure lifecycle](../src/doors/adventure.ts)
+
+Relay Trivia uses the declarative question lifecycle. The Forgotten Archive uses the
+declarative adventure lifecycle. Signal Hunter and Relay Trader implement different code-door
+mechanics and can each grant the same manifest fact, which the Annex checks along with the
+restoration and retained evidence.
 
 ## Determinism and tests
 

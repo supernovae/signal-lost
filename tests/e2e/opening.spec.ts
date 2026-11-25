@@ -1,5 +1,6 @@
 import { expect, test } from './fixtures.ts';
 import type { Page } from '@playwright/test';
+import { disableWebGl } from './helpers.ts';
 
 const OPENING = [
   'SIGNAL RECEIVED',
@@ -63,13 +64,7 @@ test('a click joins the network, even before the text has finished', async ({ pa
 
 test('the game stays playable when WebGL is unavailable', async ({ page }) => {
   const errors = trackErrors(page);
-  await page.addInitScript(() => {
-    const original = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, type: string) {
-      if (type.includes('webgl')) return null;
-      return original.call(this, type as '2d');
-    } as typeof original;
-  });
+  await disableWebGl(page);
   await page.goto('./');
   await expect(page.locator('body')).toHaveAttribute('data-render', 'fallback');
   await expect(page.locator('.crt')).toHaveCSS('background-image', /radial-gradient/);
