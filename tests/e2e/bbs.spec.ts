@@ -482,6 +482,109 @@ for (const journey of [
   });
 }
 
+function recoverySave(): string {
+  const data = freshSave(42);
+  const { designation, ...legacy } = JSON.parse(completedV1) as {
+    designation: string;
+    flags: string[];
+    preferences: Partial<typeof data.preferences>;
+  };
+  return JSON.stringify({
+    ...data,
+    ...legacy,
+    schemaVersion: data.schemaVersion,
+    profile: { ...data.profile, designation },
+    preferences: { ...data.preferences, ...legacy.preferences },
+    flags: [...legacy.flags, 'deferred-verified', 'spool-02-order-learned'],
+  });
+}
+
+test('restores SPOOL-02 and returns to the Annex by keyboard after reload', async ({ page }) => {
+  await seedSaveOnce(page, recoverySave());
+  await page.goto('./');
+  const log = page.getByRole('log');
+  const latest = log.locator('.system').last();
+  const activate = (name: string) => activateBbsButton(page, 'keyboard', name);
+  const type = (command: string) => typeCommand(page, 'BBS>', command);
+
+  async function signIn() {
+    await typeCommand(page, 'OBS>', 'CONNECT');
+    await type('DESIGNATION');
+    await expect(latest).toContainText('DEEP FIELD MAIN MENU');
+  }
+
+  await joinWithEnter(page);
+  await signIn();
+  await expect(latest).toContainText('TRAINING COMPLETE');
+  await activate('DIRECTORY');
+  await expect(page.getByRole('button', { name: 'MAINTENANCE ANNEX' })).toHaveCount(0);
+  await activate('RECOVERY CONSOLE');
+  await expect(latest).toContainText('TARGET: RELAY 07 / SPOOL-02');
+  await expect(latest).toContainText('RESTORE WORKING SPOOL. RETAIN SEALED ORIGINALS.');
+  await expect(latest).toContainText('Apply the training shelf procedure.');
+  await type('APPLY SEAL / ACK / ROUTE');
+  await expect(latest).toContainText(
+    'ACK needs a destination receipt. Review the training notebook and retry.',
+  );
+  await expect(log).not.toContainText('SPOOL-02 WORKING SPOOL RESTORED');
+  await type('APPLY SEAL / ROUTE / ACK');
+  await expect(log).toContainText('SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.');
+  await activate('BACK');
+  await activate('MAINTENANCE ANNEX');
+  await expect(latest).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+  await activate('Retained source fragments');
+  for (const fragment of [
+    'signature-checker / SC-1',
+    'queue-reader / QR-1',
+    'replay-writer / RW-1',
+  ]) {
+    await expect(log.getByText(`BEGIN ${fragment}`, { exact: true })).toBeVisible();
+  }
+  await activate('MAIN MENU');
+  await expect(latest).toContainText('ACCESS LEVEL: MAINTAINER');
+
+  await page.reload();
+  await joinWithEnter(page);
+  await typeCommand(page, 'OBS>', 'STATUS');
+  await expect(log).toContainText('ACCESS LEVEL: MAINTAINER');
+  await expect(log).toContainText('OBSERVERS ONLINE: 1');
+  await signIn();
+  await expect(latest).toContainText('ACCESS LEVEL: MAINTAINER');
+  await activate('DIRECTORY');
+  await activate('MAINTENANCE ANNEX');
+  await expect(latest).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+});
+
+test('stages, clears and applies the recovery order with pointer controls', async ({ page }) => {
+  await seedSaveOnce(page, recoverySave());
+  await page.goto('./');
+  await joinWithEnter(page);
+  await connect(page).click();
+  const button = (name: string) => page.getByRole('button', { name, exact: true });
+  const log = page.getByRole('log');
+  await button('USE DESIGNATION (OBS-02FF)').click();
+  await button('DIRECTORY').click();
+  await button('RECOVERY CONSOLE').click();
+  await expect(button('CLEAR')).toBeDisabled();
+  await expect(button('APPLY')).toBeDisabled();
+  await button('ORDER ACK').click();
+  await expect(button('ORDER ACK')).toBeDisabled();
+  await expect(log).toContainText('STAGED ORDER: ACK');
+  await button('CLEAR').click();
+  await expect(button('ORDER ACK')).toBeEnabled();
+  await expect(log).toContainText('STAGED ORDER: EMPTY');
+  await button('ORDER SEAL').click();
+  await button('ORDER ROUTE').click();
+  await expect(button('APPLY')).toBeDisabled();
+  await button('ORDER ACK').click();
+  await expect(log).toContainText('STAGED ORDER: SEAL / ROUTE / ACK');
+  await button('APPLY').click();
+  await expect(log).toContainText('SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.');
+  await button('BACK').click();
+  await button('MAINTENANCE ANNEX').click();
+  await expect(log).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+});
+
 for (const input of ['keyboard', 'pointer'] as const) {
   test(`SECOND LINE denies and grants access through ${input} controls`, async ({ page }) => {
     const beforeRelay = JSON.parse(completedV1) as { puzzles: string[]; flags: string[] };

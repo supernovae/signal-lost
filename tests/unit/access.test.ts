@@ -45,7 +45,7 @@ describe('access levels', () => {
       'content/access-levels/above-relay.json': {
         id: 'above-relay',
         label: 'ABOVE RELAY',
-        rank: 2,
+        rank: 3,
         when: { all: [{ any: [panel, drill] }, 'bbs-read:relay-note'] },
       },
     });
@@ -54,7 +54,7 @@ describe('access levels', () => {
     expect(deriveAccessLevel(accessLevels, facts)?.rank).toBe(1);
     facts.add('bbs-read:relay-note');
     const higher = deriveAccessLevel(accessLevels, facts);
-    expect(higher?.rank).toBe(2);
+    expect(higher?.rank).toBe(3);
     expect(hasAccessLevel(accessLevels, higher, 'relay')).toBe(true);
     expect(hasAccessLevel(accessLevels, higher, 'missing')).toBe(false);
     expect(deriveAccessLevel([], facts)).toBeUndefined();

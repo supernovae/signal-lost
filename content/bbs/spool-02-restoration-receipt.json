@@ -1,0 +1,13 @@
+{
+  "kind": "message",
+  "id": "spool-02-restoration-receipt",
+  "board": "deep-field",
+  "title": "SPOOL-02 restoration receipt",
+  "from": "SYSOP",
+  "date": "UNDATED",
+  "body": [
+    "SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.",
+    "MAINTAINER GRANTED. OPEN DIRECTORY / MAINTENANCE ANNEX."
+  ],
+  "eventOnly": true
+}

@@ -1,0 +1,12 @@
+{
+  "kind": "message-board",
+  "id": "maintenance-annex",
+  "bbs": "deep-field",
+  "directory": true,
+  "title": "MAINTENANCE ANNEX",
+  "requires": "flag:spool-02-restored",
+  "description": [
+    "SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1",
+    "Verify stored records, admit verified records to the queue, then write a separate replay copy."
+  ]
+}

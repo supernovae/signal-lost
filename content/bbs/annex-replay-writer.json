@@ -1,0 +1,13 @@
+{
+  "kind": "message",
+  "id": "annex-replay-writer",
+  "board": "maintenance-annex",
+  "title": "RW-1 / replay-writer",
+  "from": "RELAY 07 / RETAINED SOURCE",
+  "date": "UNDATED",
+  "body": [
+    "BEGIN replay-writer / RW-1",
+    "REQUIRES: QR-1 and SC-1. Writes verified dispatch to a separate replay copy.",
+    "END replay-writer / SEAL RW-1 VERIFIED"
+  ]
+}

@@ -373,6 +373,15 @@
       "text": [
         "ECHO: The headers place composition before departure. The custody audit confirms the same copies came out of the hold. Both records stay on file."
       ]
+    },
+    {
+      "id": "echo.bbs.spool-02-restored",
+      "kind": "bbs",
+      "when": "flag:spool-02-restored",
+      "priority": 5,
+      "text": [
+        "ECHO: The Annex shows which fragments the queue reader and replay writer depend on. I can read those dependencies now."
+      ]
     }
   ]
 }

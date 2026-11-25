@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createBbs, getBbsOffer, type DispatchResult } from '../../src/bbs/bbs.ts';
 import { applyBbsEffect, createBbsProgress } from '../../src/bbs/progress.ts';
+import { evaluate } from '../../src/content/conditions.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import type { Content } from '../../src/content/schema.ts';
 import { loadContent } from '../../src/content/validate.ts';
@@ -11,9 +12,11 @@ import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
 import { createDoorHost } from '../../src/doors/host.ts';
 import { createDoorRegistry } from '../../src/doors/registry.ts';
 import { createDialogueSources } from '../../src/narrative/dialogue.ts';
+import { deriveAccessLevel } from '../../src/progress/access.ts';
 import { settleEvents } from '../../src/progress/events.ts';
 import { factsOf, openSaveSession } from '../../src/progress/save.ts';
 import { createGame } from '../../src/puzzle/game.ts';
+import { mapNodes } from '../../src/world/map.ts';
 import discoveryFixture from '../fixtures/bbs-discovery.json';
 import completedV1 from '../fixtures/episode-000-complete-v1.json';
 
@@ -725,6 +728,14 @@ describe('the Q17 investigation', () => {
   type Desk = (typeof desk)[keyof typeof desk];
   const correction = 'Delivery is not authorship. I had those reversed.';
   const receipt = 'Queue receipt: Q17; search batch identifier.';
+  const cases = Object.values(desk).flatMap((route) =>
+    [true, false].map((forgeOpened) => ({ route, forgeOpened })),
+  );
+  const recovery = 'BOARD spool-02-recovery';
+  const annex = 'BOARD maintenance-annex';
+  const restore = 'APPLY SEAL / ROUTE / ACK';
+  const receiptId = 'spool-02-restoration-receipt';
+  const restoreFlag = 'spool-02-restored';
 
   function start(forgeOpened = true) {
     const flags = completedV1.flags.filter((flag) => forgeOpened || flag !== 'forge-opened');
@@ -858,7 +869,9 @@ describe('the Q17 investigation', () => {
     );
     expect(
       [...sysop, ...boards, ...boardLabels, ...directory, ...network, ...labels].join(' '),
-    ).not.toMatch(/SPOOL-02|MAINTAINER|MAINTENANCE ANNEX|TRAINING SHELF/i);
+    ).not.toMatch(/MAINTAINER|MAINTENANCE ANNEX|TRAINING SHELF/i);
+    expect(network.join(' ')).not.toContain('SPOOL-02');
+    expect(journey.data.flags).not.toContain(restoreFlag);
   }
 
   function submit(journey: Journey, route: Desk) {
@@ -927,12 +940,7 @@ describe('the Q17 investigation', () => {
     expectHandoffBoundary(journey);
   });
 
-  it.each([
-    { route: desk.headers, forgeOpened: true },
-    { route: desk.headers, forgeOpened: false },
-    { route: desk.custody, forgeOpened: true },
-    { route: desk.custody, forgeOpened: false },
-  ])(
+  it.each(cases)(
     'reaches $route.title independently with FORGE opened=$forgeOpened',
     ({ route, forgeOpened }) => {
       const journey = start(forgeOpened);
@@ -985,38 +993,310 @@ describe('the Q17 investigation', () => {
     },
   );
 
-  it.each(Object.values(desk))(
-    'opens and restores the training shelf after $title',
-    async (route) => {
-      const journey = start(false);
+  async function liveSession(session: ReturnType<typeof sessionData>) {
+    const { data, persist } = session;
+    const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
+    const host = createDoorHost(createDoorRegistry(content.doors), data, persist, settle);
+    const progress = createBbsProgress(data, settle, persist);
+    const game = createGame({ content, data, persist });
+    const voices = createDialogueSources(content.characters);
+    const bbs = createBbsDoorSession(
+      getBbsOffer(content, factsOf(data))!,
+      () => data,
+      host,
+      (id) => {
+        const source = voices.get(id);
+        return source && game.say(source, 'bbs');
+      },
+    );
+    async function dispatch(command: string) {
+      const offline = bbs.screen().phase === 'offline';
+      const result = (await bbs.dispatch(command))!;
+      if (offline && bbs.screen().phase === 'login') expect(progress.connect()).toBe(true);
+      return { result, saved: !result.effect || progress.apply(result.effect) };
+    }
+    async function run(command: string) {
+      const { result, saved } = await dispatch(command);
+      expect(saved).toBe(true);
+      return lines(result);
+    }
+    async function noWrite(command: string) {
+      const before = structuredClone(data);
+      const bytes = session.storage.value;
+      session.storage.setItem.mockClear();
+      const output = await dispatch(command);
+      expect(output.result.effect).toBeUndefined();
+      expect(data).toEqual(before);
+      expect(session.storage.value).toBe(bytes);
+      expect(session.storage.setItem).not.toHaveBeenCalled();
+      return lines(output.result);
+    }
+    await run('CONNECT');
+    await run('DESIGNATION');
+    return {
+      ...session,
+      bbs,
+      run,
+      dispatch,
+      noWrite,
+      commands: () => bbs.screen().actions.map(({ command }) => command),
+    };
+  }
+
+  type LiveSession = Awaited<ReturnType<typeof liveSession>>;
+
+  async function liveVoices({ run }: LiveSession) {
+    await run('MENU');
+    const sysop = (await run('SYSOP')).join(' ');
+    await run('MENU');
+    await run('PEOPLE');
+    await run('PROFILE echo-profile');
+    return { sysop, echo: (await run('TALK')).join(' ') };
+  }
+
+  function expectWorld(data: LiveSession['data'], restored: boolean, forgeOpened: boolean) {
+    const facts = factsOf(data);
+    const nodes = mapNodes(content.sectors, facts);
+    const spool = nodes.find(({ sector }) => sector.id === 'spool-02');
+    if (restored) {
+      expect(spool).toMatchObject({ enterable: true, sector: { name: 'SPOOL-02' } });
+    } else {
+      expect(spool).toBeUndefined();
+    }
+    const observatory = nodes.find(({ sector }) => sector.id === 'silent-observatory');
+    expect(observatory?.enterable).toBe(false);
+    expect(observatory?.sector.lockedText.join(' ')).toContain('NO CARRIER');
+    expect(observatory?.sector.lockedText.join(' ')).toContain(
+      '2 OBSERVERS REQUIRED. OBSERVERS ONLINE: 1.',
+    );
+    expect(deriveAccessLevel(content.accessLevels, facts)).toMatchObject(
+      restored ? { rank: 2, label: 'MAINTAINER' } : { rank: 1, label: 'RELAY' },
+    );
+    const forge = content.artifacts.find(({ id }) => id === 'forge')!;
+    expect(forge.requires).toBe('flag:service-panel-open');
+    expect(evaluate(forge.requires, facts)).toBe(true);
+    expect(facts.has('flag:forge-opened')).toBe(forgeOpened);
+    expect(data.episodes).toEqual(completedV1.episodes);
+    expect(data.profile.designation).toBe(completedV1.designation);
+  }
+
+  async function openRecovery(session: LiveSession) {
+    await session.run('MENU');
+    await session.run('DIRECTORY');
+    expect(session.commands()).toContain(recovery);
+    expect(await session.run(recovery)).toEqual(
+      expect.arrayContaining([
+        'TARGET: RELAY 07 / SPOOL-02',
+        'RESTORE WORKING SPOOL. RETAIN SEALED ORIGINALS.',
+      ]),
+    );
+  }
+
+  async function expectLocked(session: LiveSession, forgeOpened: boolean) {
+    expectWorld(session.data, false, forgeOpened);
+    expect(session.data.flags).not.toContain(restoreFlag);
+    await session.run('MENU');
+    await session.run('DIRECTORY');
+    expect(session.commands()).not.toContain(annex);
+    expect(await session.noWrite(annex)).toContain('COMMAND UNAVAILABLE HERE.');
+    expect((await session.run('NETWORK')).join(' ')).not.toContain('SPOOL-02');
+    await session.run('MENU');
+    await session.run('MESSAGES');
+    expect(
+      session.bbs
+        .screen()
+        .actions.map(({ label }) => label)
+        .join(' '),
+    ).not.toContain('SPOOL-02 restoration receipt');
+  }
+
+  async function finishRestoration(
+    session: LiveSession,
+    proofRoutes: Desk[],
+    forgeOpened: boolean,
+  ) {
+    const { run, noWrite, bbs, data, storage } = session;
+    const receiptKey = `message:${receiptId}`;
+    const wrongOrder = 'ACK needs a destination receipt. Review the training notebook and retry.';
+    const invalidOrder =
+      'Enter each operation once, separated by /. Review the training notebook and retry.';
+    const receiptLine = 'SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.';
+    const action = (command: string) =>
+      bbs.screen().actions.find((entry) => entry.command === command);
+
+    await run('MENU');
+    await run('BOARDS');
+    expect(session.commands()).not.toContain(recovery);
+    expect(await noWrite(recovery)).toContain('COMMAND UNAVAILABLE HERE.');
+    await openRecovery(session);
+    expect(bbs.screen().hint).toContain('Apply the training shelf procedure.');
+    expect(session.commands().filter((command) => command.startsWith('ORDER '))).toEqual([
+      'ORDER ACK',
+      'ORDER ROUTE',
+      'ORDER SEAL',
+    ]);
+    expect(action('APPLY')?.disabled).toBe(true);
+    expect(action('CLEAR')?.disabled).toBe(true);
+    expect(await noWrite('APPLY SEAL / ACK / ROUTE')).toContain(wrongOrder);
+
+    await expectLocked(session, forgeOpened);
+    const before = await liveVoices(session);
+    expect(before.echo).toContain(
+      proofRoutes.length === 1 ? proofRoutes[0]!.echo : 'Both records stay on file.',
+    );
+    expect(before.sysop).toContain(
+      proofRoutes.length === 1 ? proofRoutes[0]!.sysop : 'HEADER PROOF AND CUSTODY AUDIT FILED.',
+    );
+
+    await openRecovery(session);
+    for (const invalid of [
+      'APPLY',
+      'APPLY SEAL / ROUTE',
+      'APPLY SEAL / SEAL / ACK',
+      'APPLY SEAL / ROUTE / SEND',
+      'APPLY SEAL / ROUTE / ACK EXTRA',
+      'APPLY SEAL / ROUTE / ACK / ACK',
+    ]) {
+      expect(await noWrite(invalid)).toContain(invalidOrder);
+    }
+    expect(await noWrite('ORDER SEAL')).toContain('STAGED ORDER: SEAL');
+    expect(action('ORDER SEAL')).toMatchObject({ selected: true, disabled: true });
+    expect(action('CLEAR')?.disabled).toBe(false);
+    expect(await noWrite('CLEAR')).toContain('STAGED ORDER: EMPTY');
+    expect(action('ORDER SEAL')).toMatchObject({ selected: false, disabled: false });
+    await noWrite('ORDER SEAL');
+    await noWrite('ORDER ACK');
+    expect(await noWrite('ORDER ROUTE')).toContain('STAGED ORDER: SEAL / ACK / ROUTE');
+    expect(action('APPLY')?.disabled).toBe(false);
+    expect(await noWrite('APPLY')).toContain(wrongOrder);
+    await noWrite('BACK');
+    expect(bbs.screen().phase).toBe('directory');
+    await run(recovery);
+    expect(action('APPLY')?.disabled).toBe(true);
+
+    if (proofRoutes.length === 2) {
+      const refused = await liveSession(sessionData(memoryStorage(storage.value)));
+      await openRecovery(refused);
+      const bytes = refused.storage.value;
+      refused.storage.setItem.mockImplementationOnce(() => {
+        throw new Error('save refused');
+      });
+      const output = await refused.dispatch(restore);
+      expect(output.saved).toBe(false);
+      expect(lines(output.result)).toContain(receiptLine);
+      expect(refused.data.flags).toContain(restoreFlag);
+      expect(refused.storage.value).toBe(bytes);
+      await refused.run('BACK');
+      expect(refused.commands()).toContain(annex);
+    }
+
+    const application = forgeOpened ? '  aPpLy  seal/  Route / ack  ' : 'APPLY';
+    if (!forgeOpened) {
+      for (const token of ['SEAL', 'ROUTE', 'ACK']) await noWrite(`ORDER ${token}`);
+    }
+    const expected = structuredClone(data);
+    expected.flags.push(restoreFlag);
+    expected.bbs.history.push({ kind: 'read', id: receiptKey });
+    expected.bbsReadMessages.push(receiptKey);
+    expected.events.fired.push(restoreFlag);
+    expected.events.bulletins.push(receiptId);
+    storage.setItem.mockClear();
+    const restored = await session.dispatch(application);
+    expect(restored.saved).toBe(true);
+    expect(restored.result.effect).toEqual({
+      history: { kind: 'read', id: receiptKey },
+      readKeys: [receiptKey],
+    });
+    const output = lines(restored.result);
+    expect(output).toContain(receiptLine);
+    expect(storage.setItem).toHaveBeenCalledOnce();
+    expect(data).toEqual(expected);
+    const reloaded = sessionData(storage);
+    expect(reloaded.status).toBe('loaded');
+    expect(reloaded.data).toEqual(expected);
+    await run('BACK');
+    expect(bbs.screen().phase).toBe('directory');
+    expect(session.commands()).toContain(annex);
+
+    const next = await liveSession(reloaded);
+    expectWorld(next.data, true, forgeOpened);
+    await openRecovery(next);
+    expect(await next.noWrite(restore)).toEqual(output);
+    expect(next.data.flags.filter((flag) => flag === restoreFlag)).toEqual([restoreFlag]);
+    await next.run('BACK');
+    expect(await next.run('NETWORK')).toEqual(
+      expect.arrayContaining(['SPOOL-02 | AVAILABLE', 'SILENT OBSERVATORY | RESTRICTED']),
+    );
+    await next.run('BACK');
+    await next.run('DOORS');
+    expect(next.commands().filter((command) => command.startsWith('OPEN '))).toEqual([
+      'OPEN forgotten-archive',
+      'OPEN relay-trivia',
+    ]);
+    await next.run('BACK');
+    expect(next.commands()).toContain(annex);
+    expect(await next.run(annex)).toContain('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+    const thread = 'THREAD maintenance-annex-fragments';
+    expect(next.commands()).toContain(thread);
+    expect(await next.run(thread)).toEqual(
+      expect.arrayContaining([
+        'BEGIN signature-checker / SC-1',
+        'REQUIRES: none. Verifies the seal on each stored record.',
+        'END signature-checker / SEAL SC-1 VERIFIED',
+        'GHOST: Keep the original seal with the record. A verified copy needs a trace back.',
+        'BEGIN queue-reader / QR-1',
+        'REQUIRES: SC-1. Admits only verified records.',
+        'END queue-reader / SEAL QR-1 VERIFIED',
+        'PACKET: Check the seal before the queue. Saves routing a bad copy twice.',
+        'BEGIN replay-writer / RW-1',
+        'REQUIRES: QR-1 and SC-1. Writes verified dispatch to a separate replay copy.',
+        'END replay-writer / SEAL RW-1 VERIFIED',
+      ]),
+    );
+    await next.run('BACK');
+    expect(next.commands()).toContain(thread);
+    await next.run('BACK');
+    expect(next.bbs.screen().phase).toBe('directory');
+    expect(await next.run('MENU')).toContain('ACCESS LEVEL: MAINTAINER');
+    expect(await liveVoices(next)).toEqual({
+      echo: 'ECHO: The Annex shows which fragments the queue reader and replay writer depend on. I can read those dependencies now.',
+      sysop: 'MAINTAINER GRANTED. ORIGINAL REMAINS READ-ONLY. WORKING COPY ACCESS ONLY.',
+    });
+    const bbsJourney = boardSession(next);
+    runAll(bbsJourney.run, 'CONNECT', 'DESIGNATION');
+    for (const route of proofRoutes) {
+      expect(lines(readConfirmation(bbsJourney, route))).toContain(route.confirmation);
+    }
+    archivedVoices(bbsJourney);
+  }
+
+  it.each(cases)(
+    'restores SPOOL-02 through $route.title and the training shelf with FORGE opened=$forgeOpened',
+    async ({ route, forgeOpened }) => {
+      const journey = start(forgeOpened);
       const openCommand = 'OPEN forgotten-archive';
       const learnedFlag = 'spool-02-order-learned';
       const order = 'SEAL / ROUTE / ACK';
       const inspectFirst = 'Inspect all three training fragments before recording the procedure.';
 
-      async function doorDirectory(session: ReturnType<typeof sessionData>) {
-        const { data, persist } = session;
-        const settle = (candidate: typeof data) => settleEvents(content.events, candidate);
-        const host = createDoorHost(createDoorRegistry(content.doors), data, persist, settle);
-        const progress = createBbsProgress(data, settle, persist);
-        const bbs = createBbsDoorSession(getBbsOffer(content, factsOf(data))!, () => data, host);
-        async function run(command: string) {
-          const result = (await bbs.dispatch(command))!;
-          if (result.effect) expect(progress.apply(result.effect)).toBe(true);
-          return lines(result);
-        }
-        await run('CONNECT');
-        await run('DESIGNATION');
-        await run('DOORS');
-        return { bbs, run, commands: () => bbs.screen().actions.map(({ command }) => command) };
-      }
-
       async function expectClosed() {
-        const directory = await doorDirectory(journey);
+        const directory = await liveSession(journey);
+        await directory.run('DOORS');
         expect(directory.commands()).not.toContain(openCommand);
+        expect(directory.commands().filter((command) => command.startsWith('OPEN '))).toEqual([
+          'OPEN relay-trivia',
+        ]);
         expect(await directory.run(openCommand)).toContain('DOOR UNAVAILABLE.');
         expect(directory.bbs.screen().phase).toBe('doors');
       }
+
+      const unproven = await liveSession(journey);
+      await expectLocked(unproven, forgeOpened);
+      await unproven.run('MENU');
+      await unproven.run('DIRECTORY');
+      expect(unproven.commands()).not.toContain(recovery);
+      expect(await unproven.noWrite(recovery)).toContain('COMMAND UNAVAILABLE HERE.');
+      expect(await unproven.noWrite(restore)).toContain('COMMAND UNAVAILABLE HERE.');
 
       await expectClosed();
       discover(journey);
@@ -1032,7 +1312,15 @@ describe('the Q17 investigation', () => {
         'deferred-verified',
       ]);
 
-      const initial = await doorDirectory(journey);
+      const initial = await liveSession(journey);
+      await expectLocked(initial, forgeOpened);
+      await openRecovery(initial);
+      expect(initial.commands()).toEqual(['BACK', 'MENU', 'HELP', 'DISCONNECT']);
+      expect(await initial.noWrite(restore)).toContain(
+        'Training required. Learn the procedure at The Forgotten Archive shelf.',
+      );
+      await initial.run('MENU');
+      await initial.run('DOORS');
       expect(initial.commands()).toContain(openCommand);
       expect(await initial.run(openCommand)).toContain('ARCHIVE VESTIBULE');
       expect(await initial.run('TRAINING SHELF')).toContain('TRAINING SHELF');
@@ -1052,7 +1340,8 @@ describe('the Q17 investigation', () => {
           endingId: null,
         },
       });
-      const restored = await doorDirectory(partial);
+      const restored = await liveSession(partial);
+      await restored.run('DOORS');
       expect(await restored.run(openCommand)).toContain('TRAINING SHELF');
       expect(await restored.run('SEAL / ACK / ROUTE')).toContain(
         'ACK is missing the destination receipt.',
@@ -1083,6 +1372,7 @@ describe('the Q17 investigation', () => {
       expect(await restored.run('NOTEBOOK')).toContain(`TRAINING NOTEBOOK: ${order}.`);
       const menu = await restored.run('EXIT');
       expect(menu).toContain('DEEP FIELD MAIN MENU');
+      expect(menu).toContain('TRAINING COMPLETE. Open DIRECTORY / RECOVERY CONSOLE.');
       expect(restored.bbs.screen().phase).toBe('menu');
 
       const afterExit = sessionData(journey.storage);
@@ -1090,7 +1380,8 @@ describe('the Q17 investigation', () => {
       expect(afterExit.data.flags).toEqual([...journey.data.flags, learnedFlag]);
       expect(afterExit.data.episodes).toEqual(journey.data.episodes);
       expect(afterExit.data.locations).toEqual(journey.data.locations);
-      const reopened = await doorDirectory(afterExit);
+      const reopened = await liveSession(afterExit);
+      await reopened.run('DOORS');
       await reopened.run(openCommand);
       expect(await reopened.run('VESTIBULE')).toContain('ARCHIVE VESTIBULE');
       expect(await reopened.run('NOTEBOOK')).toContain(`TRAINING NOTEBOOK: ${order}.`);
@@ -1100,6 +1391,30 @@ describe('the Q17 investigation', () => {
       expect([...menu, ...(await reopened.run('EXIT'))].join(' ')).not.toMatch(
         /restored|restoration|maintenance annex|chapter complete/i,
       );
+
+      const knowledgeOnly = JSON.parse(journey.storage.value!) as { flags: string[] };
+      knowledgeOnly.flags = knowledgeOnly.flags.filter((flag) => flag !== 'deferred-verified');
+      const withoutProof = await liveSession(
+        sessionData(memoryStorage(JSON.stringify(knowledgeOnly))),
+      );
+      expect(withoutProof.data.events.fired).toContain(route.resultId);
+      expect(withoutProof.data.flags).toContain(learnedFlag);
+      expect(withoutProof.data.flags).not.toContain('deferred-verified');
+      await openRecovery(withoutProof);
+      expect(withoutProof.commands()).toEqual(['BACK', 'MENU', 'HELP', 'DISCONNECT']);
+      expect(await withoutProof.noWrite(restore)).toContain(
+        'Q17 proof required. Verify the deferred release at either Q17 desk.',
+      );
+
+      const proofRoutes = [route];
+      if (route === desk.custody && forgeOpened) {
+        const both = boardSession(afterExit);
+        runAll(both.run, 'CONNECT', 'DESIGNATION');
+        gather(both, desk.headers);
+        submit(both, desk.headers);
+        proofRoutes.push(desk.headers);
+      }
+      await finishRestoration(reopened, proofRoutes, forgeOpened);
     },
   );
 

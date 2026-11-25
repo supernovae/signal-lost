@@ -880,7 +880,7 @@ describe('access and capability diagnostics', () => {
     delete withoutBaseline[baselineFile];
     expect(loadContent(withoutBaseline).errors).toContainEqual(
       expect.objectContaining({
-        file: relayFile,
+        file: expect.stringMatching(/^content\/access-levels\//),
         field: 'rank',
         message: expect.stringContaining('unconditional rank 0'),
       }),
@@ -909,7 +909,7 @@ describe('access and capability diagnostics', () => {
       'duplicate access level rank',
     );
     expectError(
-      { [extraFile]: { ...relay, rank: 2 } },
+      { [extraFile]: { ...relay, rank: 3 } },
       extraFile,
       'id',
       'duplicate accessLevels id',
@@ -1490,5 +1490,173 @@ describe('declarative BBS board checks', () => {
       'check.responseMessageId',
       'one bulletin posting triggered by its own BBS read',
     );
+  });
+});
+
+describe('declarative BBS order checks', () => {
+  const files = readContentDir('content');
+  const boardFile = 'content/bbs/spool-02-recovery.json';
+  const receiptFile = 'content/bbs/spool-02-restoration-receipt.json';
+  const eventFile = 'content/events/spool-02-restored.json';
+  const board = bbsMessageBoardSchema.parse(files[boardFile]);
+  const check = board.orderCheck!;
+  const { responseMessageId } = check;
+  const event = files[eventFile] as { id: string; when: string; effects: { kind: string }[] };
+  const earlierCheck = bbsMessageBoardSchema.parse(files['content/bbs/q17-header-desk.json']);
+
+  function boardError(overrides: Record<string, unknown>, field: string, message: string) {
+    expect(loadContent({ ...files, ...overrides }).errors).toContainEqual({
+      file: boardFile,
+      field,
+      message: expect.stringContaining(message),
+    });
+  }
+
+  it('validates the shipped receipt and its only restore flag producer', () => {
+    const { errors, content } = loadContent(files);
+    expect(errors).toEqual([]);
+    expect(content.bbs.find(({ id }) => id === responseMessageId)).toMatchObject({
+      kind: 'message',
+      board: board.bbs,
+      eventOnly: true,
+    });
+    const owners = content.bbs.filter(
+      (entry) =>
+        entry.kind === 'message-board' &&
+        (entry.check ?? entry.orderCheck)?.responseMessageId === responseMessageId,
+    );
+    expect(owners.map(({ id }) => id)).toEqual([board.id]);
+    const producers = content.events.filter(({ effects }) =>
+      effects.some((effect) => effect.kind === 'grant-flag' && effect.flag === 'spool-02-restored'),
+    );
+    expect(producers).toEqual([
+      {
+        id: 'spool-02-restored',
+        when: `bbs-read:${responseMessageId}`,
+        effects: [
+          { kind: 'grant-flag', flag: 'spool-02-restored' },
+          { kind: 'post-bulletin', messageId: responseMessageId },
+        ],
+      },
+    ]);
+    const missing = loadContent({
+      ...files,
+      [eventFile]: { ...event, effects: event.effects.filter(({ kind }) => kind !== 'grant-flag') },
+    });
+    for (const [file, field] of [
+      ['content/bbs/maintenance-annex.json', 'requires'],
+      ['content/access-levels/maintainer.json', 'when'],
+      ['content/sectors/spool-02.json', 'visibleWhen'],
+    ]) {
+      expect(missing.errors).toContainEqual({
+        file,
+        field,
+        message: 'nothing grants "flag:spool-02-restored"',
+      });
+    }
+  });
+
+  it('rejects a board with both check modes', () => {
+    boardError(
+      { [boardFile]: { ...board, check: earlierCheck.check } },
+      'orderCheck',
+      'only one check',
+    );
+  });
+
+  it('rejects unknown and repeated prerequisites', () => {
+    const [proof, learned] = check.prerequisites;
+    boardError(
+      {
+        [boardFile]: {
+          ...board,
+          orderCheck: {
+            ...check,
+            prerequisites: [{ ...proof, fact: 'flag:missing-proof' }, learned],
+          },
+        },
+      },
+      'orderCheck.prerequisites.0.fact',
+      'nothing grants "flag:missing-proof"',
+    );
+    boardError(
+      { [boardFile]: { ...board, orderCheck: { ...check, prerequisites: [proof, proof] } } },
+      'orderCheck.prerequisites',
+      'prerequisite facts must be unique',
+    );
+  });
+
+  it('rejects malformed and repeated operation tokens', () => {
+    const [operation] = check.operations;
+    boardError(
+      {
+        [boardFile]: {
+          ...board,
+          orderCheck: {
+            ...check,
+            operations: [{ ...operation, token: 'seal / route' }, ...check.operations.slice(1)],
+          },
+        },
+      },
+      'orderCheck.operations.0.token',
+      'Invalid string',
+    );
+    boardError(
+      { [boardFile]: { ...board, orderCheck: { ...check, operations: [operation, operation] } } },
+      'orderCheck.operations',
+      'operations must be unique',
+    );
+  });
+
+  it('rejects a non-event receipt or one claimed by another check mode', () => {
+    const receipt = files[receiptFile] as Record<string, unknown>;
+    boardError(
+      { [receiptFile]: { ...receipt, eventOnly: false } },
+      'orderCheck.responseMessageId',
+      'event-only message on this endpoint',
+    );
+    boardError(
+      {
+        'content/bbs/q17-header-desk.json': {
+          ...earlierCheck,
+          check: {
+            ...earlierCheck.check,
+            responseMessageId,
+          },
+        },
+      },
+      'orderCheck.responseMessageId',
+      'exactly one board check',
+    );
+  });
+
+  it('rejects early or duplicate receipt publication', () => {
+    const beforeReceipt = 'flag:deferred-verified';
+    for (const overrides of [
+      { [eventFile]: { ...event, when: beforeReceipt } },
+      {
+        'content/events/early-restore-receipt.json': {
+          id: 'early-restore-receipt',
+          when: beforeReceipt,
+          effects: [{ kind: 'post-bulletin', messageId: responseMessageId }],
+        },
+      },
+    ]) {
+      boardError(
+        overrides,
+        'orderCheck.responseMessageId',
+        'one bulletin posting triggered by its own BBS read',
+      );
+    }
+  });
+
+  it.each(['ORDER', 'CLEAR', 'APPLY'])('reserves %s for ordered checks', (command) => {
+    const file = 'content/bbs/linecheck.json';
+    const secret = files[file] as Record<string, unknown>;
+    expect(loadContent({ ...files, [file]: { ...secret, command } }).errors).toContainEqual({
+      file,
+      field: 'command',
+      message: `reserved or duplicate BBS command "${command}"`,
+    });
   });
 });

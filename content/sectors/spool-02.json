@@ -1,0 +1,10 @@
+{
+  "id": "spool-02",
+  "name": "SPOOL-02",
+  "position": { "x": 68, "y": 47 },
+  "visibleWhen": "flag:spool-02-restored",
+  "description": [
+    "RELAY 07 / SPOOL-02. LOCAL WORKING SPOOL ONLINE.",
+    "SEALED ORIGINALS REMAIN READ-ONLY. SEE THE MAINTENANCE ANNEX IN THE DEEP FIELD DIRECTORY."
+  ]
+}

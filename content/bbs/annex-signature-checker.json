@@ -1,0 +1,14 @@
+{
+  "kind": "message",
+  "id": "annex-signature-checker",
+  "board": "maintenance-annex",
+  "title": "SC-1 / signature-checker",
+  "from": "GHOST (retained)",
+  "date": "2001-03-02",
+  "body": [
+    "BEGIN signature-checker / SC-1",
+    "REQUIRES: none. Verifies the seal on each stored record.",
+    "END signature-checker / SEAL SC-1 VERIFIED",
+    "GHOST: Keep the original seal with the record. A verified copy needs a trace back."
+  ]
+}
