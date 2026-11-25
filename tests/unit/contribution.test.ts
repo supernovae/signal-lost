@@ -23,7 +23,15 @@ import { freshSave } from '../../src/progress/save.ts';
 
 const { content, errors } = loadContent(readContentDir(resolve('content')));
 const forge = content.artifacts.find((a) => a.id === 'forge')!;
-const FORMS = ['propose-transmission.yml', 'propose-archive-entry.yml'];
+const FORMS = [
+  'propose-transmission.yml',
+  'propose-archive-entry.yml',
+  'propose-character.yml',
+  'propose-branching-adventure.yml',
+  'propose-door-game.yml',
+  'propose-network-location.yml',
+  'propose-mechanic-improvement.yml',
+];
 
 describe('FORGE', () => {
   it('has valid content', () => {
@@ -36,16 +44,18 @@ describe('FORGE', () => {
   });
 
   it('links only to forms that exist', () => {
-    const templates = forge.links
-      .map((link) => new URL(link.url).searchParams.get('template'))
-      .filter((template) => template !== null);
-    expect(templates.sort()).toEqual([...FORMS].sort());
-    for (const template of templates) {
+    const templates = forge.links.map((link) => {
+      const url = new URL(link.url);
+      expect(url.origin).toBe('https://github.com');
+      expect(url.pathname).toBe('/supernovae/signal-lost/issues/new');
+      expect(url.hash).toBe('');
+      const template = url.searchParams.get('template');
+      assert(template && FORMS.includes(template), `Unknown form in ${link.url}`);
+      expect([...url.searchParams]).toEqual([['template', template]]);
       expect(existsSync(`.github/ISSUE_TEMPLATE/${template}`)).toBe(true);
-    }
-    for (const link of forge.links) {
-      expect(new URL(link.url).hostname).toBe('github.com');
-    }
+      return template;
+    });
+    expect(templates.sort()).toEqual([...FORMS].sort());
   });
 });
 

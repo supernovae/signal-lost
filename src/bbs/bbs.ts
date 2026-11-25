@@ -1,5 +1,11 @@
 import { evaluate } from '../content/conditions.ts';
-import type { BbsThread, BbsTone, DialogueLine, bbsOrderVerbs } from '../content/schema.ts';
+import type {
+  Artifact,
+  BbsThread,
+  BbsTone,
+  DialogueLine,
+  bbsOrderVerbs,
+} from '../content/schema.ts';
 import type { DoorListing } from '../doors/registry.ts';
 import { deriveAccessLevel, hasAccessLevel } from '../progress/access.ts';
 import { normalizeHandle } from '../progress/save.ts';
@@ -22,6 +28,7 @@ type Route =
         | 'boards'
         | 'people'
         | 'directory'
+        | 'artifact'
         | 'network'
         | 'history';
     }
@@ -54,6 +61,7 @@ export interface DispatchResult {
   output: BbsOutput[];
   effect?: BbsEffect;
   opensDoor?: string;
+  opensArtifact?: Artifact;
   opensSettings?: boolean;
 }
 
@@ -110,7 +118,7 @@ export function createBbs(
   doors?: BbsDoors,
   say?: BbsSay,
 ) {
-  const { board, boards, threads, profiles, secrets, messages, accessLevels } = offer;
+  const { board, boards, threads, profiles, secrets, messages, accessLevels, artifacts } = offer;
   const facts = () => doors?.facts() ?? offer.initialFacts;
   let route: Route = { phase: 'offline' };
 
@@ -257,6 +265,7 @@ export function createBbs(
           ...(doors ? [actionButton('DOORS')] : []),
           actionButton('NETWORK'),
           ...boardLinks('directory'),
+          ...artifacts.map(({ id, name }) => link('OPEN', id, name)),
         ]);
       default:
         return view([]);
@@ -323,6 +332,7 @@ export function createBbs(
       case 'message':
         return section({ phase: 'messages' }, labels.MESSAGES);
       case 'network':
+      case 'artifact':
         return section({ phase: 'directory' }, labels.DIRECTORY);
       case 'doors':
         if (route.parent === 'directory') return section({ phase: 'directory' }, labels.DIRECTORY);
@@ -599,6 +609,12 @@ export function createBbs(
     }
     if (phase === 'doors' && action === 'OPEN') {
       return id ? { output: [], opensDoor: id } : system(text.chooseDoor, screen().hint);
+    }
+    if (phase === 'directory' && action === 'OPEN') {
+      const artifact = artifacts.find((entry) => entry.id === id);
+      if (artifact) {
+        return { ...section({ phase: 'artifact' }, artifact.name), opensArtifact: artifact };
+      }
     }
     if ((phase === 'boards' || phase === 'directory') && action === 'BOARD') {
       const next = visibleBoards(phase).find((entry) => entry.id === id);

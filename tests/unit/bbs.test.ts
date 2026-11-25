@@ -154,6 +154,54 @@ describe('the DEEP FIELD session', () => {
     expect(bbs.screen().phase).toBe('offline');
   });
 
+  it.each([false, true])(
+    'opens FORGE from Directory with prior panel discovery %s',
+    (discovered) => {
+      const session = sessionData();
+      if (discovered) session.data.flags.push('service-panel-open', 'forge-opened');
+      const { run, bbs, commands, data, storage } = boardSession(session);
+      const forge = content.artifacts.find(({ id }) => id === 'forge')!;
+      const command = 'OPEN forge';
+
+      expect(commands()).not.toContain(command);
+      expect(run(command).opensArtifact).toBeUndefined();
+      run('CONNECT');
+      expect(commands()).not.toContain(command);
+      expect(run(command).opensArtifact).toBeUndefined();
+      expect(lines(run('DESIGNATION'))).toContain('DIRECTORY / FORGE takes proposals.');
+      expect(commands()).not.toContain(command);
+      expect(run(command).opensArtifact).toBeUndefined();
+
+      run('DIRECTORY');
+      expect(bbs.screen().actions).toContainEqual({ command, label: forge.name });
+      expect(lines(run('HELP')).join(' ')).toContain(command);
+      expect(run('OPEN unknown').opensArtifact).toBeUndefined();
+      expect(run('OPEN forge extra').opensArtifact).toBeUndefined();
+      expect(bbs.screen().phase).toBe('directory');
+      const before = structuredClone(data);
+      const saved = storage.value;
+      const result = run('open FORGE');
+      expect(result.opensArtifact).toEqual(forge);
+      expect(lines(result)).toContain('DEEP FIELD FORGE');
+      expect(result.effect).toBeUndefined();
+      expect(data).toStrictEqual(before);
+      expect(storage.value).toBe(saved);
+      expect(evaluate(forge.requires, factsOf(data))).toBe(discovered);
+      expect(bbs.screen().phase).toBe('artifact');
+      expect(commands()).toEqual(['BACK', 'MENU', 'HELP', 'DISCONNECT']);
+      expect(run(command).opensArtifact).toBeUndefined();
+      run('BACK');
+      expect(bbs.screen().phase).toBe('directory');
+      runAll(run, command, 'MENU');
+      expect(bbs.screen().phase).toBe('menu');
+      expect(run(command).opensArtifact).toBeUndefined();
+      runAll(run, 'DIRECTORY', 'DOORS');
+      expect(run(command).opensArtifact).toBeUndefined();
+      runAll(run, 'BACK', command, 'DISCONNECT');
+      expect(bbs.screen().phase).toBe('offline');
+    },
+  );
+
   it('uses the static greeting or an explicit unavailable message without a dialogue callback', () => {
     const { data } = sessionData();
     const current = offer();

@@ -23,6 +23,7 @@ export interface BbsOffer {
   threads: BbsThread[];
   profiles: Profile[];
   secrets: Secret[];
+  artifacts: Content['artifacts'];
   characters: Content['characters'];
   sectors: Content['sectors'];
   initialFacts: ReadonlySet<string>;
@@ -77,6 +78,7 @@ export function getBbsOffer(content: Content, facts: ReadonlySet<string>): BbsOf
     threads,
     profiles,
     secrets,
+    artifacts: content.artifacts.filter((artifact) => artifact.bbsBoard === board.id),
     characters: content.characters,
     sectors: content.sectors,
     initialFacts: facts,

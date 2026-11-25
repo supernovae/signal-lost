@@ -4,7 +4,8 @@
   "name": "THE FORGOTTEN ARCHIVE",
   "description": "Door C. A local training shelf and the retained records of its custodians.",
   "attribution": {
-    "author": "SIGNAL//LOST contributors"
+    "author": "SIGNAL//LOST contributors",
+    "creditKind": "placeholder"
   },
   "version": 1,
   "requires": "flag:deferred-verified",

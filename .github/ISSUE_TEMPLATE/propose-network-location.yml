@@ -1,0 +1,43 @@
+name: Propose a network location
+description: Suggest a place for players to discover in the Observer Network. No code needed.
+title: 'Network location: '
+labels: ['swarm:community']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your idea in your own words. Maintainers review proposals before they reach the game.
+  - type: input
+    id: proposal-title
+    attributes:
+      label: Fictional location name
+    validations:
+      required: true
+  - type: textarea
+    id: visit
+    attributes:
+      label: Reason to visit and how to get there
+      description: What draws players to the site, and what route or clue leads them there?
+    validations:
+      required: true
+  - type: textarea
+    id: discovery
+    attributes:
+      label: What the player finds
+      description: Describe the records, people or equipment the player might encounter.
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: How should we credit you?
+      description: Give your real contributor credit. Leave blank to use your GitHub handle.
+    validations:
+      required: false
+  - type: checkboxes
+    id: original
+    attributes:
+      label: Original work
+      options:
+        - label: I wrote this, or have the right to contribute it under this project's MIT license.
+          required: true

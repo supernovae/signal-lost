@@ -1,5 +1,8 @@
 import { expect, test } from './fixtures.ts';
 
+const deferredRequestPath =
+  /\/(?:connection-[^/]+\.js|contributors?-[^/]+\.(?:js|json)|signal-hunter-[^/]+\.js|relay-trader-[^/]+\.js|code-door-content-[^/]+\.js|content\/.*\.json|[^/]+\.jsonc|content-manifest\.json)$/;
+
 test('startup makes no failed or off-site requests, and logs no errors', async ({
   page,
   baseURL,
@@ -13,7 +16,7 @@ test('startup makes no failed or off-site requests, and logs no errors', async (
   });
   page.on('request', (request) => {
     const url = new URL(request.url());
-    if (/\/(connection-[^/]+\.js|content\/.*\.json|content-manifest\.json)$/.test(url.pathname)) {
+    if (deferredRequestPath.test(url.pathname)) {
       eagerRequests.push(url.pathname);
     }
     if (url.protocol.startsWith('http') && url.origin !== origin) {

@@ -1,0 +1,43 @@
+name: Propose a mechanic improvement
+description: Suggest a change to how an existing part of the game works. No code needed.
+title: 'Mechanic improvement: '
+labels: ['swarm:community']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your idea in your own words. Maintainers review proposals before they reach the game.
+  - type: input
+    id: proposal-title
+    attributes:
+      label: Interaction to improve
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current behavior and problem
+      description: Describe what the player does today and where they get stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Proposed change
+      description: What would change, and what could we observe in a playthrough to tell if it helped?
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: How should we credit you?
+      description: Give your real contributor credit. Leave blank to use your GitHub handle.
+    validations:
+      required: false
+  - type: checkboxes
+    id: original
+    attributes:
+      label: Original work
+      options:
+        - label: I wrote this, or have the right to contribute it under this project's MIT license.
+          required: true
