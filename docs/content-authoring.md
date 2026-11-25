@@ -1,6 +1,6 @@
 # Content authoring
 
-Everything a player reads lives in `content/` as JSON. You can add to the game without touching TypeScript or the engine. Run `npm ci` once, and `npm run dev` to play your change locally.
+Story records and dialogue live in `content/`. You can add transmissions, BBS records, and declarative doors without touching TypeScript. Run `npm ci` once, then `npm run dev` to play your change locally.
 
 ## Worked example: add a transmission
 
@@ -91,6 +91,15 @@ owned by the endpoint with `eventOnly: true`. Give it one exclusive board check 
 event that posts it with `when` set to its own `bbs-read:<message id>` fact. The first
 success records that read. Later successes show the same message again.
 
+[The Forgotten Board](../content/bbs/forgotten-board.json) uses SEARCH to locate a batch
+after the player reads its index. The [Q17 header desk](../content/bbs/q17-header-desk.json)
+uses SUBMIT to check a finding against its evidence messages.
+
+A board with an `orderCheck` lists prerequisite facts with feedback for missing evidence,
+operation tokens with out-of-order feedback, and an event-only response message. The listed
+operations define the correct order. Use `prompt` to tell players how to submit an order
+with APPLY. [Recovery console](../content/bbs/spool-02-recovery.json)
+
 A board can define one `reconstructionCheck` in place of a search, submit or order check.
 Its `prerequisites` name saved facts, including the shared manifest reward. Give every
 `fragmentMessageIds` entry a public thread on the same board and `retainedModule` data
@@ -104,6 +113,7 @@ sealed originals, indexed dispatch messages and hold receipt. The replay verifie
 and dispatch seals before emitting the event-only response. The referenced episode must
 require that response's read fact and all declared prerequisites. The optional `credits`
 copy opens the build-generated contributor record after completion.
+[Maintenance Annex](../content/bbs/maintenance-annex.json)
 
 In `content/capabilities/`, give each capability an `id`, a `kind`, an existing saved `fact`, and
 a `target`. Use `kind: "research"` with a target such as
@@ -128,6 +138,7 @@ its effects in array order. The game then checks eligibility again. The save rec
 once. Flags granted by events can be used in conditions. Validation rejects flag dependency
 cycles, including references in nested or negated conditions. Reading a posted bulletin is a
 separate player action and may qualify another event.
+[Chapter 2 completion bulletin](../content/events/unassigned-routing-entry.json)
 
 ## BBS conversations
 
@@ -143,6 +154,11 @@ lines. Conversation is scripted, and facts and unlocks are independent of the li
 ## BBS adventures
 
 Follow the [door authoring guide](door-authoring.md) to copy, check and preview your first door.
+
+Use `kind: "trivia"` for a multiple-choice drill. Each question supplies prompt lines,
+options, a zero-based answer index, and retry text. The game's buttons and commands number
+choices starting at 1. Put the completion text and reward in the door record.
+[Relay Trivia](../content/doors/relay-trivia.json)
 
 Add an adventure as a JSON file under `content/doors/` with `kind` set to `adventure`.
 The global `requires` condition controls which signed-in players can open the door.
@@ -164,12 +180,21 @@ ending. List every global reward under `rewards` and provide a local rule for ea
 The loader checks references and walks reachable checkpoints, up to 4,096 states. Run
 `npm run content:validate` to check a new door. [Forgotten Archive](../content/doors/forgotten-archive.json)
 
+Use a reviewed TypeScript door for a new interaction with its own mechanics. Export a
+`defineDoor` lifecycle with a saved-state schema and register its metadata and lazy import
+in the [code door catalog](../src/doors/code-doors.ts). Signal Hunter and Relay Trader use
+this path and read the same signed repair manifest. Run `npm run door:check -- <id>`, then
+open `/signal-lost/door-preview?id=<id>` on the local Vite dev server to try either door format.
+The [door authoring guide](door-authoring.md) has the complete preview steps.
+
 ## Other kinds of content
 
 | Directory               | Holds                                                                                                                   |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `transmissions/`        | Text the player acquires.                                                                                               |
-| `archives/`             | BBS messages and records. Set `keywords`, and `searchOnly: true` to hide one until it is searched for by exact keyword. |
+| `archives/`             | Archive records and earlier BBS material. Set `keywords` and `searchOnly: true` to require an exact keyword search.     |
+| `bbs/`                  | Endpoints, boards, threads, messages, profiles and BBS interface text.                                                  |
+| `doors/`, `code-doors/` | Declarative door records and authored data for bundled code doors.                                                      |
 | `community/`            | One file holding several transmissions and archive entries, with shared attribution. `first-light.json` is the example. |
 | `characters/`           | Scripted dialogue, including ECHO's hub lines and BBS conversations.                                                    |
 | `events/`               | Fact-triggered flag grants and BBS bulletins.                                                                           |

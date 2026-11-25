@@ -14,6 +14,19 @@ export async function seedSaveOnce(page: Page, value: string): Promise<void> {
   );
 }
 
+export async function disableWebGl(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      ...args: Parameters<typeof original>
+    ) {
+      if (typeof args[0] === 'string' && args[0].includes('webgl')) return null;
+      return original.apply(this, args);
+    } as typeof original;
+  });
+}
+
 /** Plays Episode 000 through the real interface, from the hub to the ending. */
 export async function completeEpisode(page: Page): Promise<void> {
   await page.getByRole('button', { name: /ANALYZER/ }).click();
