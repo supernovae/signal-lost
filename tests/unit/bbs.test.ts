@@ -1233,6 +1233,7 @@ describe('the Q17 investigation', () => {
       'OPEN forgotten-archive',
       'OPEN relay-trivia',
       'OPEN signal-hunter',
+      'OPEN relay-trader',
     ]);
     await next.run('BACK');
     expect(next.commands()).toContain(annex);

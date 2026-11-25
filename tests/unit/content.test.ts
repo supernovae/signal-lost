@@ -1558,6 +1558,7 @@ describe('declarative BBS order checks', () => {
       ['content/access-levels/maintainer.json', 'when'],
       ['content/sectors/spool-02.json', 'visibleWhen'],
       ['src/doors/signal-hunter/signal-hunter.ts', 'requires'],
+      ['src/doors/relay-trader/relay-trader.ts', 'requires'],
     ]) {
       expect(missing.errors).toContainEqual({
         file,

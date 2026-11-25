@@ -1,0 +1,57 @@
+{
+  "stations": {
+    "null-quay": {
+      "name": "NULL QUAY",
+      "reasons": {
+        "power-cell": "A charging bank keeps cells plentiful and the quay needs few spares.",
+        "coolant": "Only a few drums arrive and the dock machinery needs refills.",
+        "coil": "Few coils arrive and the winches need replacements.",
+      },
+    },
+    "switchyard": {
+      "name": "SWITCHYARD",
+      "reasons": {
+        "power-cell": "The switching crews need spare cells and have few to offer.",
+        "coolant": "The cooling plant stocks surplus drums and buys few back.",
+        "coil": "Repair crews keep some coils in stock and buy steady replacements.",
+      },
+    },
+    "far-relay": {
+      "name": "FAR RELAY",
+      "reasons": {
+        "power-cell": "The relay batteries need backups and the outpost has limited spares.",
+        "coolant": "The transmitters run hot and coolant deliveries are scarce.",
+        "coil": "The winding shop has stocked up and needs few coils back.",
+      },
+    },
+  },
+  "resources": {
+    "power-cell": "Power cell",
+    "coolant": "Coolant",
+    "coil": "Coil",
+  },
+  "desk": {
+    "intro": "PACKET: NULL QUAY acknowledgement desk.",
+    "rule": "One repair manifest for proof of receipt, not value. Empty acknowledgement envelope reserved free for this Observer. Stamp ACK plus target node.",
+    "requisition": "Requisition: acknowledge {node} for signed manifest {manifest}.",
+    "reserved": "Free envelope reserved. Claim it at the desk.",
+    "empty": "Empty acknowledgement envelope held.",
+    "mistamped": "The stamp names a different node. Correct it free at the desk.",
+    "stamped": "Envelope stamped {stamp}. Ready for exchange.",
+    "exchanged": "Exchange receipt: {stamp} accepted for {manifest}.",
+    "unclaimed": "Claim your free envelope before stamping or exchanging it.",
+    "needsStamp": "Exchange requires {stamp}. The desk can correct a stamp for free.",
+    "invalidStamp": "Use one of the desk stamps shown below.",
+    "wrongStampNode": "RELAY-07",
+    "held": "The signed manifest is available to read.",
+    "unavailable": "Exchange the acknowledged envelope to receive the signed manifest.",
+    "help": "Choose a desk action or open the optional market.",
+  },
+  "market": {
+    "tip": "PACKET: Start with power cells from NULL QUAY. SWITCHYARD pays for spares.",
+    "priceRule": "Each market sets a reference price. You pay one credit above it and receive one below it. Stock and demand are finite for this run.",
+    "rejected": "That action is unavailable here. Check cargo, credits, stock, demand and routes.",
+    "restartPrompt": "Start a new market run? This resets your credits, cargo, racks and station quotas. Your desk progress stays with you.",
+    "restarted": "New market run started.",
+  },
+}
