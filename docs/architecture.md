@@ -30,7 +30,7 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 
 ## Content pipeline
 
-`loadContent` validates a map of file paths to parsed JSON, and never throws for bad content. It returns typed content, errors with file and field, and a manifest. The browser bundles `content/**/*.json` through `import.meta.glob`. `scripts/content-plugin.ts` runs the same validation in `npm run build`, fails on errors, and emits `content-manifest.json` with a content version hash. `npm run content:validate` is the same check from the command line.
+`loadContent` validates a map of file paths to parsed JSON, and never throws for bad content. It returns typed content, errors with file and field, and a manifest. In development the browser loads `content/**/*.json` through `import.meta.glob` and validates it at startup. In production `scripts/content-plugin.ts` runs the same validation during `npm run build`, fails on errors, and supplies the normalized content to the browser entry. It also emits `content-manifest.json` with a content version hash. `npm run content:validate` is the same check from the command line.
 
 ## Network events and dialogue
 

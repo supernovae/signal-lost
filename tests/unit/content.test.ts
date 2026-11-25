@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { build } from 'vite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, assert, describe, expect, it } from 'vitest';
 import { contentPlugin } from '../../scripts/content-plugin.ts';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
@@ -27,6 +27,7 @@ import {
   characterSchema,
   communitySchema,
   type AdventureDoor,
+  type Content,
   type DoorMetadata,
   type TriviaDoor,
 } from '../../src/content/schema.ts';
@@ -1308,6 +1309,39 @@ describe('entry points', () => {
     const result = cli(root);
     expect(result.status).toBe(1);
     expect(result.output).toContain(`${DOOR_FILE}: questions.0.answer:`);
+  });
+
+  it('the build supplies all validated browser content and its manifest', async () => {
+    const expected = loadContent(readContentDir('content'));
+    expect(expected.errors).toEqual([]);
+    const result = await build({
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [contentPlugin()],
+      build: { write: false, lib: { entry: 'src/content/browser.ts', formats: ['es'] } },
+    });
+    const builds = Array.isArray(result) ? result : [result];
+    expect(builds).toHaveLength(1);
+    const [bundle] = builds;
+    assert(bundle && 'output' in bundle, 'Expected an in-memory bundle');
+    const entry = bundle.output.find((file) => file.type === 'chunk' && file.isEntry);
+    assert(entry?.type === 'chunk', 'Expected a JavaScript entry');
+    expect(entry.imports).toEqual([]);
+    expect(entry.dynamicImports).toEqual([]);
+    const url = `data:text/javascript;base64,${Buffer.from(entry.code).toString('base64')}`;
+    const bundled: { loadBundledContent(): Content } = await import(/* @vite-ignore */ url);
+    const content = bundled.loadBundledContent();
+    expect(content).toStrictEqual(expected.content);
+    const doorIds = content.doors.map((door) => door.id);
+    expect(doorIds).toContain('forgotten-archive');
+    expect(doorIds).not.toContain('tiny-adventure');
+
+    const manifest = bundle.output.find((file) => file.fileName === 'content-manifest.json');
+    assert(
+      manifest?.type === 'asset' && typeof manifest.source === 'string',
+      'Expected a manifest',
+    );
+    expect(JSON.parse(manifest.source)).toStrictEqual(expected.manifest);
   });
 
   it('the build rejects invalid content', async () => {

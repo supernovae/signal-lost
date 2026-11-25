@@ -304,6 +304,11 @@ for (const journey of [
     desk: 'Q17 HEADER DESK',
     evidence: ['Q17 message headers', 'Queue policy'],
     proof: 'HEADER ANALYSIS',
+    presentation: 'ai-fictional',
+    sender: 'ECHO',
+    title: 'Q17 header confirmation',
+    confirmationId: 'q17-header-confirmation',
+    routeFlag: 'deferred-headers-verified',
     outcome: ['INDEX COPY', 'Index the labeled training copy', 'LABELED COPY INDEXED'],
   },
   {
@@ -311,6 +316,11 @@ for (const journey of [
     desk: 'Q17 CUSTODY DESK',
     evidence: ['Sealed originals', 'Dispatch comparison', 'Migration hold receipt'],
     proof: 'CUSTODY AUDIT',
+    presentation: 'recovered',
+    sender: 'SYSOP',
+    title: 'Q17 custody confirmation',
+    confirmationId: 'q17-custody-confirmation',
+    routeFlag: 'deferred-custody-verified',
     outcome: ['SEALED REFERENCES', 'Restrict to sealed references', 'SEALED REFERENCES ONLY'],
   },
 ] as const) {
@@ -378,10 +388,32 @@ for (const journey of [
       await activate(evidence);
       await activate('BACK');
     }
+    const output = log.locator('.bbs-output');
+    const beforeSubmit = await output.count();
     await type('SUBMIT DEFERRED');
-    await expect(log.locator('.ai-fictional').last()).toContainText(
+    await expect(output).toHaveCount(beforeSubmit + 1);
+    const confirmation = output.nth(beforeSubmit);
+    await expect(confirmation).toContainClass(journey.presentation);
+    for (const line of [
+      journey.title,
+      `FROM: ${journey.sender}`,
       `DEFERRED VERIFIED / ${journey.proof}`,
-    );
+    ]) {
+      await expect(confirmation.getByText(line, { exact: true })).toBeVisible();
+    }
+    const saved = await page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
+    expect(saved).not.toBeNull();
+    const { bbsReadMessages, events, flags } = JSON.parse(saved!) as ReturnType<typeof freshSave>;
+    expect(bbsReadMessages).toContain(`message:${journey.confirmationId}`);
+    expect(events.fired).toContain(journey.confirmationId);
+    expect(events.bulletins).toContain(journey.confirmationId);
+    expect(flags.filter((flag) => flag === 'deferred-verified')).toHaveLength(1);
+    expect(
+      flags.filter(
+        (flag) => flag === 'deferred-headers-verified' || flag === 'deferred-custody-verified',
+      ),
+    ).toEqual([journey.routeFlag]);
+
     await activate('MAIN MENU');
     await openArchive();
     await expect(screen).toContainText('ARCHIVE VESTIBULE');
