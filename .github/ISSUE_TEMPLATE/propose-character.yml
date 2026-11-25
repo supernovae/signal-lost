@@ -1,0 +1,43 @@
+name: Propose a character
+description: Suggest a fictional character for the Observer Network. No code needed.
+title: 'Character: '
+labels: ['swarm:community']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your idea in your own words. Maintainers review proposals before they reach the game.
+  - type: input
+    id: proposal-title
+    attributes:
+      label: Fictional name
+    validations:
+      required: true
+  - type: textarea
+    id: role
+    attributes:
+      label: Role in the network
+      description: What do they do, and how are they connected to the Observer Network?
+    validations:
+      required: true
+  - type: textarea
+    id: encounter
+    attributes:
+      label: Voice or encounter
+      description: Write a sample line or describe a moment the player could meet them.
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: How should we credit you?
+      description: Give your real contributor credit. Leave blank to use your GitHub handle.
+    validations:
+      required: false
+  - type: checkboxes
+    id: original
+    attributes:
+      label: Original work
+      options:
+        - label: I wrote this, or have the right to contribute it under this project's MIT license.
+          required: true

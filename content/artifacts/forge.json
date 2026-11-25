@@ -1,6 +1,7 @@
 {
   "id": "forge",
   "name": "FORGE",
+  "bbsBoard": "deep-field",
   "requires": "flag:service-panel-open",
   "grantsOnOpen": ["flag:forge-opened"],
   "description": [
@@ -14,6 +15,13 @@
     "",
     "LOCAL WRITE: DENIED. THIS TERMINAL ONLY KNOWS WHERE THE FILING OFFICE IS."
   ],
+  "contributorRecord": {
+    "heading": "Real contributor credits",
+    "review": "From reviewed content.",
+    "maintainersOnly": "Only maintainers are credited so far.",
+    "empty": "No contributor credits yet.",
+    "loadFailure": "Credits could not load."
+  },
   "links": [
     {
       "label": "FILE A TRANSMISSION",
@@ -24,8 +32,24 @@
       "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-archive-entry.yml"
     },
     {
-      "label": "THE FILING OFFICE",
-      "url": "https://github.com/supernovae/signal-lost"
+      "label": "PROPOSE A CHARACTER",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-character.yml"
+    },
+    {
+      "label": "PROPOSE A BRANCHING ADVENTURE",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-branching-adventure.yml"
+    },
+    {
+      "label": "PROPOSE A DOOR GAME",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-door-game.yml"
+    },
+    {
+      "label": "PROPOSE A NETWORK LOCATION",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-network-location.yml"
+    },
+    {
+      "label": "PROPOSE A MECHANIC IMPROVEMENT",
+      "url": "https://github.com/supernovae/signal-lost/issues/new?template=propose-mechanic-improvement.yml"
     }
   ]
 }

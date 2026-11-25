@@ -3,7 +3,7 @@
   "id": "relay-trivia",
   "name": "RELAY TRIVIA",
   "description": "A two-question equipment drill from the DEEP FIELD training shelf.",
-  "attribution": { "author": "SIGNAL//LOST contributors" },
+  "attribution": { "author": "SIGNAL//LOST contributors", "creditKind": "placeholder" },
   "version": 1,
   "requires": "completed:episode.000",
   "saveState": "question-index",

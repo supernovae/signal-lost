@@ -22,11 +22,18 @@ const condition: z.ZodType<Condition> = z.lazy(() =>
   ]),
 );
 
-const attribution = z.strictObject({
-  author: z.string().min(1),
-  handle: z.string().optional(),
-  sourcePr: z.string().optional(),
-});
+const attribution = z
+  .strictObject({
+    author: z.string().min(1),
+    handle: z.string().optional(),
+    sourcePr: z.string().optional(),
+    creditKind: z.enum(['maintainer', 'placeholder']).optional(),
+  })
+  .refine(
+    ({ creditKind, handle, sourcePr }) =>
+      creditKind !== 'placeholder' || (handle === undefined && sourcePr === undefined),
+    'placeholder attribution cannot include a handle or source PR',
+  );
 
 const record = {
   id,
@@ -565,6 +572,16 @@ export const artifactSchema = z.strictObject({
   name: z.string(),
   description: text,
   requires: condition.optional(),
+  bbsBoard: id.optional(),
+  contributorRecord: z
+    .strictObject({
+      heading: z.string().min(1),
+      review: z.string().min(1),
+      maintainersOnly: z.string().min(1),
+      empty: z.string().min(1),
+      loadFailure: z.string().min(1),
+    })
+    .optional(),
   links: z.array(z.strictObject({ label: z.string(), url: z.url() })).default([]),
   grantsOnOpen: z.array(fact).default([]),
 });
@@ -606,6 +623,7 @@ export type Character = z.infer<typeof characterSchema>;
 export type DialogueLine = Character['lines'][number];
 export type Sector = z.infer<typeof sectorSchema>;
 export type Artifact = z.infer<typeof artifactSchema>;
+export type Attribution = z.infer<typeof attribution>;
 export type Screen = z.infer<typeof screenSchema>;
 export type CommunityPackage = z.infer<typeof communitySchema>;
 

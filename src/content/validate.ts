@@ -945,6 +945,16 @@ function checkReferences(
   }
   for (const artifact of content.artifacts) {
     artifact.grantsOnOpen.forEach((g, i) => checkFact(g, artifact, `grantsOnOpen.${i}`, true));
+    if (
+      artifact.bbsBoard &&
+      !content.bbs.some((entry) => entry.kind === 'board' && entry.id === artifact.bbsBoard)
+    ) {
+      errors.push({
+        file: sources.get(artifact)!.file,
+        field: 'bbsBoard',
+        message: `unknown BBS endpoint "${artifact.bbsBoard}"`,
+      });
+    }
   }
   const lineSources = new Map<string, string>();
   for (const character of content.characters) {

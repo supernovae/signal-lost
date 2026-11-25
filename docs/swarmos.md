@@ -2,6 +2,14 @@
 
 Development is tracked with [SwarmOS](https://github.com/supernovae/SwarmOS). It's optional: you can always send an ordinary pull request. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+## Contribute an idea with agent assistance
+
+FORGE in the game links to no-code GitHub forms for transmissions, archive entries, characters, branching adventures, door games, network locations and mechanic improvements. Describe what a player would find or do and how you'd like to be credited. Maintainers review proposals before they reach the game and agree on the scope and attribution with the contributor.
+
+When a proposal becomes an approved WorkUnit, you can use SwarmOS with a configured coding agent to implement and verify it. For transmissions and archives, follow the [content authoring guide](content-authoring.md). The [door authoring guide](door-authoring.md) walks through the starter, local checker, development preview and code-door registration. You can also follow those guides and send an ordinary pull request.
+
+Use standard `attribution` for your real credit. Maintainers review the `creditKind` classification for maintainer credits and placeholder bylines. Keep fictional names and handles in the story fields.
+
 ## Complete a WorkUnit
 
 A WorkUnit is a GitHub issue with an objective, constraints, and acceptance criteria. You need the `swarm` CLI and write access, or `--fork` from your own fork.

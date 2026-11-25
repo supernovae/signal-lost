@@ -3,7 +3,8 @@
   "title": "First Light",
   "attribution": {
     "author": "SIGNAL//LOST maintainers",
-    "handle": "supernovae"
+    "handle": "supernovae",
+    "creditKind": "maintainer"
   },
   "provenance": "Ships with the game as the example of a community package. See docs/content-authoring.md.",
   "transmissions": [

@@ -184,6 +184,8 @@ describe('the ending', () => {
     expect(result.status).toBe('solved');
     expect(result.granted).toContain('completed:episode.000');
     expect(getBbsOffer(content, game.facts())?.board.id).toBe('deep-field');
+    expect(game.facts().has('flag:service-panel-open')).toBe(false);
+    expect(game.facts().has('flag:forge-opened')).toBe(false);
     expect(data.profile.designation).toMatch(/^OBS-[0-9A-F]{4}$/);
     expect(game.transmissions().map((t) => t.id)).toContain('tx.reconstructed');
   });

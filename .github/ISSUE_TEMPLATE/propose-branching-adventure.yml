@@ -1,0 +1,43 @@
+name: Propose a branching adventure
+description: Suggest a story that changes with the player’s choices. No code needed.
+title: 'Branching adventure: '
+labels: ['swarm:community']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your idea in your own words. Maintainers review proposals before they reach the game.
+  - type: input
+    id: proposal-title
+    attributes:
+      label: Adventure title
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Starting situation
+      description: Where does the player start, and what brings them there?
+    validations:
+      required: true
+  - type: textarea
+    id: choices
+    attributes:
+      label: Player choices and outcomes
+      description: Describe the options, what changes after each choice, and any endings.
+    validations:
+      required: true
+  - type: input
+    id: credit
+    attributes:
+      label: How should we credit you?
+      description: Give your real contributor credit. Leave blank to use your GitHub handle.
+    validations:
+      required: false
+  - type: checkboxes
+    id: original
+    attributes:
+      label: Original work
+      options:
+        - label: I wrote this, or have the right to contribute it under this project's MIT license.
+          required: true

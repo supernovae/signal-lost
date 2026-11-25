@@ -1,5 +1,6 @@
 import type { Scene } from '../app/scenes.ts';
 import { createTerminal, type Terminal } from '../terminal/terminal.ts';
+import { openArtifact } from '../world/artifact-view.ts';
 import { bbsCopy } from './copy.ts';
 import type { BbsDoorSession } from './door-session.ts';
 import type { BbsEffect, BbsSnapshot } from './progress.ts';
@@ -30,18 +31,23 @@ export function createBbsScene(
         if (pending) return;
         pending = true;
         try {
-          const wasOffline = bbs.screen().phase === 'offline';
+          const previousPhase = bbs.screen().phase;
           const result = await bbs.dispatch(command);
           if (!result || terminal !== active) return;
-          const { output, effect, opensSettings } = result;
-          const connected = wasOffline && bbs.screen().phase === 'login';
+          const { output, effect, opensSettings, opensArtifact } = result;
+          const connected = previousPhase === 'offline' && bbs.screen().phase === 'login';
           const saved = connected ? onConnect() : !effect || onEffect(effect);
           const { phase, actions, hint } = bbs.screen();
           if (phase === 'offline') {
             onDisconnect();
             return;
           }
-          if (!opensSettings && (settingsOpen || (phase !== 'login' && handleInput))) {
+          if (
+            !opensSettings &&
+            (settingsOpen ||
+              (phase !== 'login' && handleInput) ||
+              (previousPhase === 'artifact' && phase !== 'artifact'))
+          ) {
             active.closePanel();
             settingsOpen = false;
             handleInput = undefined;
@@ -65,6 +71,7 @@ export function createBbsScene(
             active.print([hint], 'dim');
           }
           if (!saved) active.print([tones['network-error'], text.saveRefused], 'network-error');
+          if (opensArtifact) openArtifact(active.openPanel(), opensArtifact);
           if (opensSettings) {
             settingsOpen = true;
             onSettings(active);

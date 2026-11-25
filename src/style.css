@@ -593,11 +593,33 @@ body[data-scene='bbs'] .bbs-handle input {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  padding: 0.5rem 0;
+  padding: 0.5rem 4px;
 }
 
 .artifact-links a {
-  color: var(--phosphor);
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.contributor-record {
+  max-width: 72ch;
+  border: 1px solid var(--bbs-dim, var(--phosphor-dim));
+  padding: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.contributor-record h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+
+.contributor-record p {
+  margin: 0.25rem 0;
+}
+
+.contributor-record ul {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1.5rem;
 }
 
 .tool-panel[hidden] {

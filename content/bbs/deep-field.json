@@ -23,6 +23,10 @@
       "text": "BOARDS / THE FORGOTTEN BOARD has the retained messages."
     },
     {
+      "when": "completed:episode.000",
+      "text": "DIRECTORY / FORGE takes proposals."
+    },
+    {
       "when": "flag:deferred-verified",
       "text": "Q17 PROOF: DEFERRED VERIFIED. Confirmation filed in MESSAGES."
     },

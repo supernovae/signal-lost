@@ -18,16 +18,24 @@ import { contentPlugin } from '../../scripts/content-plugin.ts';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
 import { evaluate } from '../../src/content/conditions.ts';
+import {
+  buildContributorRecord,
+  selectContributorNote,
+  selectContributorStatus,
+  type ContributorRecord,
+} from '../../src/content/contributors.ts';
 import { hashContent } from '../../src/content/manifest.ts';
 import { readContentDir } from '../../src/content/node.ts';
 import {
   adventureDoorSchema,
+  artifactSchema,
   bbsBoardSchema,
   bbsInterfaceSchema,
   bbsMessageBoardSchema,
   characterSchema,
   communitySchema,
   type AdventureDoor,
+  type Attribution,
   type Content,
   type DoorMetadata,
   type TriviaDoor,
@@ -523,6 +531,39 @@ describe('schemas and loading', () => {
       file: 'content/community/pack.json',
     });
   });
+
+  it.each(['missing', 'post'])('rejects artifact links to the non-endpoint %s', (bbsBoard) => {
+    const files = validFiles();
+    const file = 'content/artifacts/a.json';
+    files[file] = { ...artifactSchema.parse(files[file]), bbsBoard };
+    expect(loadContent(files).errors).toContainEqual({
+      file,
+      field: 'bbsBoard',
+      message: `unknown BBS endpoint "${bbsBoard}"`,
+    });
+    files[file] = { ...artifactSchema.parse(files[file]), bbsBoard: 'board' };
+    expect(loadContent(files).errors).toEqual([]);
+  });
+
+  it.each([{ handle: 'tag' }, { sourcePr: '#1' }])(
+    'rejects a placeholder with identifying credit %j',
+    (fields) => {
+      const files = validFiles();
+      const file = 'content/community/pack.json';
+      const pack = communitySchema.parse(files[file]);
+      files[file] = {
+        ...pack,
+        attribution: { author: 'Collective byline', creditKind: 'placeholder', ...fields },
+      };
+      expect(loadContent(files).errors).toContainEqual({
+        file,
+        field: 'attribution',
+        message: 'placeholder attribution cannot include a handle or source PR',
+      });
+      files[file] = { ...pack, attribution: { author: 'Reviewed author', ...fields } };
+      expect(loadContent(files).errors).toEqual([]);
+    },
+  );
 
   it('reads nested trees from disk, and reports invalid JSON', () => {
     const root = mkdtempSync(join(tmpdir(), 'content-'));
@@ -1410,6 +1451,200 @@ describe('network event and BBS dialogue references', () => {
   });
 });
 
+describe('reviewed contributor record', () => {
+  type AuthoredRecord = {
+    attribution?: Attribution;
+    transmissions?: AuthoredRecord[];
+    archives?: AuthoredRecord[];
+  };
+
+  function authoredAttributions(files: Record<string, unknown>): Attribution[] {
+    return Object.values(files).flatMap((file) => {
+      const record = file as AuthoredRecord;
+      return [record, ...(record.transmissions ?? []), ...(record.archives ?? [])].flatMap(
+        ({ attribution }) => (attribution ? [attribution] : []),
+      );
+    });
+  }
+
+  const authoredMaintainers = (files: Record<string, unknown>) =>
+    authoredAttributions(files).filter(({ creditKind }) => creditKind === 'maintainer');
+
+  function expectedEntries(files: Record<string, unknown>): ContributorRecord['entries'] {
+    const entries: ContributorRecord['entries'] = [];
+    for (const { author, handle, sourcePr, creditKind } of authoredAttributions(files)) {
+      if (creditKind === 'placeholder') continue;
+      let entry = entries.find((row) => row.author === author && row.handle === handle);
+      if (!entry) {
+        entry = { author, sourcePrs: [] };
+        if (handle !== undefined) entry.handle = handle;
+        entries.push(entry);
+      }
+      if (sourcePr !== undefined && !entry.sourcePrs.includes(sourcePr)) {
+        entry.sourcePrs.push(sourcePr);
+      }
+    }
+    for (const entry of entries) entry.sourcePrs.sort();
+    return entries.sort(
+      (a, b) => a.author.localeCompare(b.author) || (a.handle ?? '').localeCompare(b.handle ?? ''),
+    );
+  }
+
+  async function buildRecord(root?: string): Promise<ContributorRecord> {
+    const result = await build({
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [contentPlugin(root)],
+      build: {
+        write: false,
+        lib: { entry: 'src/content/contributors-browser.ts', formats: ['es'] },
+      },
+    });
+    const [bundle] = Array.isArray(result) ? result : [result];
+    assert(bundle && 'output' in bundle, 'Expected an in-memory bundle');
+    const entry = bundle.output.find((file) => file.type === 'chunk' && file.isEntry);
+    assert(entry?.type === 'chunk', 'Expected a JavaScript entry');
+    expect(entry.imports).toEqual([]);
+    expect(entry.dynamicImports).toEqual([]);
+    const url = `data:text/javascript;base64,${Buffer.from(entry.code).toString('base64')}`;
+    const bundled: { loadBundledContributors(): ContributorRecord } = await import(
+      /* @vite-ignore */ url
+    );
+    return bundled.loadBundledContributors();
+  }
+
+  const shipped = readContentDir('content');
+  const copy = artifactSchema.parse(shipped['content/artifacts/forge.json']).contributorRecord!;
+  const firstLight = 'content/community/first-light.json';
+
+  it('emits exactly the reviewed credits and adds one row for an attributed package', async () => {
+    const base = await buildRecord();
+    expect(base).toStrictEqual({ entries: expectedEntries(shipped), status: 'maintainers-only' });
+    const maintainer = authoredMaintainers(shipped)[0]!;
+    expect(base.entries).toStrictEqual([
+      { author: maintainer.author, handle: maintainer.handle, sourcePrs: [] },
+    ]);
+    expect(selectContributorStatus(base.entries, authoredMaintainers(shipped))).toBe(
+      'maintainers-only',
+    );
+    expect(selectContributorNote(base.status, copy)).toBe(copy.maintainersOnly);
+    expect(selectContributorStatus([], authoredMaintainers(shipped))).toBe('empty');
+
+    const root = mkdtempSync(join(tmpdir(), 'forge-credits-'));
+    try {
+      cpSync('content', root, { recursive: true });
+      const attribution = {
+        author: 'Reviewed Writer',
+        handle: 'reviewed-writer',
+        sourcePr: '#123',
+      };
+      const from = 'FICTIONAL SENDER';
+      writeFileSync(
+        join(root, 'community/credit-fixture.json'),
+        JSON.stringify({
+          id: 'community.credit-fixture',
+          title: 'Reviewed fixture',
+          attribution,
+          archives: [
+            { id: 'credit.note', board: 'TEST', title: 'Note', from, date: '2001-01-01', body: [] },
+          ],
+        }),
+      );
+      const files = readContentDir(root);
+      const mixed = await buildRecord(root);
+      expect(mixed.entries).toStrictEqual(expectedEntries(files));
+      expect(mixed.entries).toHaveLength(base.entries.length + 1);
+      expect(mixed.entries).toEqual(
+        expect.arrayContaining([
+          ...base.entries,
+          {
+            author: attribution.author,
+            handle: attribution.handle,
+            sourcePrs: [attribution.sourcePr],
+          },
+        ]),
+      );
+      expect(mixed.entries.map(({ author }) => author)).not.toContain(from);
+      expect(mixed.status).toBe('contributors');
+      expect(selectContributorStatus(mixed.entries, authoredMaintainers(files))).toBe(
+        'contributors',
+      );
+      expect(selectContributorNote(mixed.status, copy)).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses authored classifications for renamed bylines and exact author and handle identity', () => {
+    const files = structuredClone(shipped) as Record<string, AuthoredRecord>;
+    const packageRecord = files[firstLight]!;
+    const attribution = { author: 'Renamed Maintainer', handle: 'renamed-tag' };
+    packageRecord.attribution = { ...attribution, creditKind: 'maintainer' };
+    for (const [path, file] of Object.entries(files)) {
+      if (file.attribution?.creditKind === 'placeholder')
+        file.attribution.author = `Byline for ${path}`;
+    }
+    const record = () => {
+      const { content, errors } = loadContent(files);
+      expect(errors).toEqual([]);
+      return buildContributorRecord(content);
+    };
+    const entries = [{ ...attribution, sourcePrs: [] }];
+    expect(record()).toStrictEqual({ entries, status: 'maintainers-only' });
+    expect(
+      selectContributorStatus([{ ...attribution, handle: 'another-tag' }], [attribution]),
+    ).toBe('contributors');
+
+    packageRecord.attribution = attribution;
+    expect(record()).toStrictEqual({ entries, status: 'contributors' });
+    delete packageRecord.attribution;
+    const empty = record();
+    expect(empty).toStrictEqual({ entries: [], status: 'empty' });
+    expect(selectContributorNote(empty.status, copy)).toBe(copy.empty);
+  });
+
+  it('honors entry overrides and deduplicates inherited credit and repeated authored PRs', () => {
+    const files = structuredClone(shipped);
+    files[firstLight] = {
+      ...communitySchema.parse(files[firstLight]),
+      attribution: { author: 'Package Author', sourcePr: '#42' },
+      transmissions: [
+        { id: 'credit.inherited', title: 'Inherited', body: [] },
+        {
+          id: 'tx.first-light',
+          title: 'Override',
+          body: [],
+          attribution: { author: 'Entry Author' },
+        },
+        {
+          id: 'credit.repeat',
+          title: 'Authored repeat',
+          body: [],
+          attribution: { author: 'Package Author', sourcePr: '#42' },
+        },
+        {
+          id: 'credit.earlier',
+          title: 'Authored earlier',
+          body: [],
+          attribution: { author: 'Package Author', sourcePr: '#12' },
+        },
+      ],
+    };
+    const { content, errors } = loadContent(files);
+    expect(errors).toEqual([]);
+    expect(content.transmissions.find(({ id }) => id === 'tx.first-light')?.attribution).toEqual({
+      author: 'Entry Author',
+    });
+    expect(buildContributorRecord(content)).toStrictEqual({
+      entries: [
+        { author: 'Entry Author', sourcePrs: [] },
+        { author: 'Package Author', sourcePrs: ['#12', '#42'] },
+      ],
+      status: 'contributors',
+    });
+  });
+});
+
 describe('entry points', () => {
   const roots: string[] = [];
   const tree = (name: string, value: unknown): string => {
@@ -1499,7 +1734,7 @@ describe('entry points', () => {
     expect(JSON.parse(manifest.source)).toStrictEqual(expected.manifest);
   });
 
-  it('the production build excludes the door preview and preserves the lazy door and budgets', async () => {
+  it('the production build keeps FORGE credits and code doors lazy and stays within budget', async () => {
     const originalNodeEnv = process.env['NODE_ENV'];
     process.env['NODE_ENV'] = 'production';
     try {
@@ -1525,7 +1760,8 @@ describe('entry points', () => {
           expect(String(file.source)).not.toMatch(previewMarkers);
         }
       }
-      expect(output.map(({ fileName }) => fileName)).toContain('index.html');
+      const html = output.find(({ fileName }) => fileName === 'index.html');
+      assert(html?.type === 'asset' && typeof html.source === 'string');
       const manifest = output.find(({ fileName }) => fileName === 'content-manifest.json');
       assert(manifest?.type === 'asset' && typeof manifest.source === 'string');
       const entries = JSON.parse(manifest.source).entries as { id: string; kind: string }[];
@@ -1537,13 +1773,24 @@ describe('entry points', () => {
       const chunks = output.filter((file) => file.type === 'chunk');
       const entry = chunks.find((file) => file.isEntry && /\/index-.*\.js$/.test(file.fileName));
       const environment = chunks.find(({ fileName }) => /\/environment-.*\.js$/.test(fileName));
-      const hunter = chunks.find(({ moduleIds }) =>
-        moduleIds.some((id) => id.endsWith('/src/doors/signal-hunter/signal-hunter.ts')),
-      );
-      assert(entry && environment && hunter);
-      const entryFile = entry.fileName;
-      function reachableFromEntry(includeDynamic: boolean): Set<string> {
-        const reachable = new Set([entryFile]);
+      assert(entry && environment);
+      function chunkOwning(path: string) {
+        const chunk = chunks.find(({ moduleIds }) =>
+          moduleIds.some((id) => id.split('?')[0]?.endsWith(`/${path}`)),
+        );
+        assert(chunk, `Expected an emitted chunk for ${path}`);
+        return chunk;
+      }
+      const connection = chunkOwning('src/bbs/connection.ts');
+      const contributorView = chunkOwning('src/world/contributor-view.ts');
+      const contributorData = chunkOwning('src/content/contributors-browser.ts');
+      const hunter = chunkOwning('src/doors/signal-hunter/signal-hunter.ts');
+      const trader = chunkOwning('src/doors/relay-trader/relay-trader.ts');
+      const hunterData = chunkOwning('content/code-doors/signal-hunter.jsonc');
+      const traderData = chunkOwning('content/code-doors/relay-trader.jsonc');
+      const doorManifest = chunkOwning('content/code-doors/manifest-r07-spool-02.jsonc');
+      function reachableFrom(startFile: string, includeDynamic: boolean): Set<string> {
+        const reachable = new Set([startFile]);
         for (const name of reachable) {
           const chunk = chunks.find(({ fileName }) => fileName === name);
           chunk?.imports.forEach((fileName) => reachable.add(fileName));
@@ -1553,8 +1800,46 @@ describe('entry points', () => {
         }
         return reachable;
       }
-      expect(reachableFromEntry(false).has(hunter.fileName)).toBe(false);
-      expect(reachableFromEntry(true).has(hunter.fileName)).toBe(true);
+      const startup = reachableFrom(entry.fileName, false);
+      const all = reachableFrom(entry.fileName, true);
+      const preloads = html.source.match(/<link\b[^>]*\brel=["']modulepreload["'][^>]*>/g) ?? [];
+      const startupSpec = readFileSync('tests/e2e/startup.spec.ts', 'utf8');
+      const filter = /const deferredRequestPath\s*=\s*\/(.+)\/;/.exec(startupSpec)?.[1];
+      assert(filter, 'Expected the browser startup request filter');
+      const deferredRequest = new RegExp(filter);
+      for (const { fileName } of new Set([
+        connection,
+        contributorView,
+        contributorData,
+        hunter,
+        trader,
+        hunterData,
+        traderData,
+        doorManifest,
+      ])) {
+        expect(startup.has(fileName), fileName).toBe(false);
+        expect(all.has(fileName), fileName).toBe(true);
+        expect(
+          preloads.some((tag) => tag.includes(fileName)),
+          fileName,
+        ).toBe(false);
+        expect(deferredRequest.test(`/signal-lost/${fileName}`), fileName).toBe(true);
+      }
+      expect(entry.dynamicImports).toEqual(
+        expect.arrayContaining([connection.fileName, contributorView.fileName]),
+      );
+      expect(reachableFrom(contributorView.fileName, false).has(contributorData.fileName)).toBe(
+        true,
+      );
+      const connected = reachableFrom(connection.fileName, true);
+      expect(connected.has(hunter.fileName)).toBe(true);
+      expect(connected.has(trader.fileName)).toBe(true);
+      const hunterPayload = reachableFrom(hunter.fileName, false);
+      expect(hunterPayload.has(hunterData.fileName)).toBe(true);
+      expect(hunterPayload.has(doorManifest.fileName)).toBe(true);
+      const traderPayload = reachableFrom(trader.fileName, false);
+      expect(traderPayload.has(traderData.fileName)).toBe(true);
+      expect(traderPayload.has(doorManifest.fileName)).toBe(true);
       expect(hunter.isDynamicEntry).toBe(true);
 
       const entryKib = gzipSync(entry.code).length / 1024;
