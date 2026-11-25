@@ -1,0 +1,43 @@
+{
+  "request": "TARGET MANIFEST {manifest}. Verify a trace from {node} with an intact signature.",
+  "cards": {
+    "H1": { "node": "RELAY-07", "integrity": "INTACT", "note": "Relay-only index." },
+    "H2": { "node": "SPOOL-02", "integrity": "DAMAGED", "note": "Spool trace with a failed seal." },
+    "H3": {
+      "node": "SPOOL-02",
+      "integrity": "INTACT",
+      "note": "Spool trace with a readable seal.",
+    },
+  },
+  "story": {
+    "help": "Use VERIFY H1, VERIFY H2 or VERIFY H3 to check a trace. Use PRACTICE for optional drills.",
+    "wrongNode": "{card} rejected. This trace is from {actual}. The request requires {node}.",
+    "wrongIntegrity": "{card} rejected. Its damaged signature cannot be verified.",
+    "verified": "{card} verified. Signed spool manifest acquired.",
+    "held": "Signed spool manifest already on file. Use MANIFEST to read it.",
+    "unavailable": "The manifest is still sealed. Verify a trace that meets both requirements.",
+  },
+  "practice": {
+    "intro": "Choose a practice drill. Practice results are kept in Signal Hunter.",
+    "help": "Use a listed SUBMIT command, TRACE to reread, RETRY to clear feedback, or NEW for another round.",
+    "choose": "Choose INTERFERENCE, PERIODICITY or HIDDEN-PATTERN.",
+    "solved": "ROUND SOLVED.",
+    "tiers": {
+      "interference": {
+        "name": "Interference",
+        "rule": "Subtract reference from receiver in each sample. Find the lane with a residual of at least {threshold} in all four samples.",
+        "feedback": "Lane {choice}, sample {sample} has a residual of {residual}. It needs at least {threshold}.",
+      },
+      "periodicity": {
+        "name": "Periodicity",
+        "rule": "A level of {threshold} or higher marks a pulse. Starting at tick 0, find the period from 3 to 6 ticks that predicts every pulse and gap.",
+        "feedback": "At tick {tick}, the trace shows {observed} but period {choice} predicts {predicted}.",
+      },
+      "hidden-pattern": {
+        "name": "Hidden Pattern",
+        "rule": "Find the slot whose four bits exactly match the reference word in both frames.",
+        "feedback": "Slot {choice}, frame {frame} reads {word}. The reference word is {reference}.",
+      },
+    },
+  },
+}

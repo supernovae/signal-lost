@@ -65,7 +65,7 @@ const validFiles = (): Record<string, unknown> => ({
     title: 'E',
     puzzles: ['p.code'],
     ending: ['END'],
-    grants: ['flag:ended'],
+    grants: ['flag:ended', 'flag:spool-02-restored'],
     designationPrefix: 'OBS',
   },
   'content/puzzles/code.json': {
@@ -1289,9 +1289,19 @@ describe('entry points', () => {
   };
 
   it('the CLI exits 0 on valid content', () => {
-    const result = cli(tree('t.json', { id: 't', title: 'T', body: [] }));
+    const root = tree('t.json', { id: 't', title: 'T', body: [] });
+    mkdirSync(join(root, 'events'));
+    writeFileSync(
+      join(root, 'events/fixture-restore.json'),
+      JSON.stringify({
+        id: 'fixture-restore',
+        when: 'acquired:t',
+        effects: [{ kind: 'grant-flag', flag: 'spool-02-restored' }],
+      }),
+    );
+    const result = cli(root);
     expect(result.status).toBe(0);
-    expect(result.output).toContain('Content OK: 1 records');
+    expect(result.output).toContain('Content OK: 2 records');
   });
 
   it('the CLI exits 1 and names the file and field on invalid content', () => {
@@ -1547,6 +1557,7 @@ describe('declarative BBS order checks', () => {
       ['content/bbs/maintenance-annex.json', 'requires'],
       ['content/access-levels/maintainer.json', 'when'],
       ['content/sectors/spool-02.json', 'visibleWhen'],
+      ['src/doors/signal-hunter/signal-hunter.ts', 'requires'],
     ]) {
       expect(missing.errors).toContainEqual({
         file,

@@ -5,7 +5,7 @@ import { evaluateAnswer, normalize } from '../../src/puzzle/evaluate.ts';
 import { createGame } from '../../src/puzzle/game.ts';
 import { freshSave } from '../../src/progress/save.ts';
 
-const { content, errors } = loadContent({
+const files = {
   'content/episodes/e.json': {
     id: 'e',
     title: 'E',
@@ -68,7 +68,8 @@ const { content, errors } = loadContent({
   },
   'content/transmissions/tx.json': { id: 'tx', title: 'T', body: [], requires: 'acquired:tx' },
   'content/transmissions/open.json': { id: 'open', title: 'O', body: [] },
-});
+};
+const { content, errors } = loadContent(files, []);
 
 const byId = (id: string): Puzzle => content.puzzles.find((p) => p.id === id)!;
 
