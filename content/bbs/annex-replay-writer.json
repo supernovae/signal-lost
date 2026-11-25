@@ -9,5 +9,11 @@
     "BEGIN replay-writer / RW-1",
     "REQUIRES: QR-1 and SC-1. Writes verified dispatch to a separate replay copy.",
     "END replay-writer / SEAL RW-1 VERIFIED"
-  ]
+  ],
+  "retainedModule": {
+    "name": "replay-writer",
+    "seal": "RW-1",
+    "boundary": "complete",
+    "dependencies": ["QR-1", "SC-1"]
+  }
 }

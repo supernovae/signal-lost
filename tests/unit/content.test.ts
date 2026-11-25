@@ -16,7 +16,9 @@ import { build } from 'vite';
 import { afterEach, assert, describe, expect, it, vi } from 'vitest';
 import { contentPlugin } from '../../scripts/content-plugin.ts';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
+import { projectBbsContent, projectEntryContent } from '../../src/content/browser-split.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
+import { reconstructReplay } from '../../src/bbs/reconstruction.ts';
 import { evaluate } from '../../src/content/conditions.ts';
 import {
   buildContributorRecord,
@@ -26,6 +28,7 @@ import {
 } from '../../src/content/contributors.ts';
 import { hashContent } from '../../src/content/manifest.ts';
 import { readContentDir } from '../../src/content/node.ts';
+import { describeRepairManifest, repairManifestPath } from '../../src/content/repair-manifest.ts';
 import {
   adventureDoorSchema,
   artifactSchema,
@@ -34,6 +37,7 @@ import {
   bbsMessageBoardSchema,
   characterSchema,
   communitySchema,
+  episodeSchema,
   type AdventureDoor,
   type Attribution,
   type Content,
@@ -44,6 +48,7 @@ import { loadContent, parseContentJson, validateDoorById } from '../../src/conte
 import type { CodeDoorRegistration } from '../../src/doors/contract.ts';
 import { createDoorHost } from '../../src/doors/host.ts';
 import { createDoorRegistry } from '../../src/doors/registry.ts';
+import { completeEpisodes } from '../../src/progress/episodes.ts';
 import { factsOf, freshSave } from '../../src/progress/save.ts';
 
 const META = { attribution: { author: 'A', handle: 'a', sourcePr: '#1' }, provenance: 'fixture' };
@@ -1719,9 +1724,51 @@ describe('entry points', () => {
     expect(entry.imports).toEqual([]);
     expect(entry.dynamicImports).toEqual([]);
     const url = `data:text/javascript;base64,${Buffer.from(entry.code).toString('base64')}`;
-    const bundled: { loadBundledContent(): Content } = await import(/* @vite-ignore */ url);
+    const bundled: {
+      loadBundledContent(): Content;
+      loadBundledEntryContent(): ReturnType<typeof projectEntryContent>;
+    } = await import(/* @vite-ignore */ url);
     const content = bundled.loadBundledContent();
     expect(content).toStrictEqual(expected.content);
+    const projected = bundled.loadBundledEntryContent();
+    expect(projected).toEqual(projectEntryContent(content));
+    expect(projected.episodes.map(({ id }) => id)).toEqual(['episode.000']);
+    expect(projected.endpoints).toEqual([
+      expect.objectContaining({ id: 'deep-field', requires: 'completed:episode.000' }),
+    ]);
+    expect(Object.keys(projected.endpoints[0]!).sort()).toEqual([
+      'id',
+      'notice',
+      'requires',
+      'title',
+    ]);
+    expect(
+      projected.characters.flatMap(({ lines }) => lines).every(({ kind }) => kind !== 'bbs'),
+    ).toBe(true);
+    expect(projected.events.map(({ id }) => id)).toEqual(['relay-bulletin']);
+
+    const bbsBuilds = await build({
+      configFile: false,
+      logLevel: 'silent',
+      plugins: [contentPlugin()],
+      build: { write: false, lib: { entry: 'src/content/bbs-browser.ts', formats: ['es'] } },
+    });
+    const [bbsBundle] = Array.isArray(bbsBuilds) ? bbsBuilds : [bbsBuilds];
+    assert(bbsBundle && 'output' in bbsBundle, 'Expected an in-memory BBS bundle');
+    const bbsEntry = bbsBundle.output.find((file) => file.type === 'chunk' && file.isEntry);
+    assert(bbsEntry?.type === 'chunk');
+    const bbsUrl = `data:text/javascript;base64,${Buffer.from(bbsEntry.code).toString('base64')}`;
+    const bbs: { loadBundledBbsContent(): ReturnType<typeof projectBbsContent> } = await import(
+      /* @vite-ignore */ bbsUrl
+    );
+    const deferred = bbs.loadBundledBbsContent();
+    expect(deferred).toEqual(projectBbsContent(content));
+    expect(deferred.bbs).toEqual(content.bbs);
+    expect(deferred.events).toEqual(content.events);
+    expect(deferred.episodes.map(({ id }) => id)).toEqual(['episode.002']);
+    expect(
+      deferred.characters.flatMap(({ lines }) => lines).every(({ kind }) => kind === 'bbs'),
+    ).toBe(true);
     const doorIds = content.doors.map((door) => door.id);
     expect(doorIds).toContain('forgotten-archive');
     expect(doorIds).not.toContain('tiny-adventure');
@@ -1732,6 +1779,11 @@ describe('entry points', () => {
       'Expected a manifest',
     );
     expect(JSON.parse(manifest.source)).toStrictEqual(expected.manifest);
+    expect(expected.manifest.entries).toContainEqual({
+      id: 'R07-SPOOL-02',
+      kind: 'repairManifests',
+      file: repairManifestPath,
+    });
   });
 
   it('the production build keeps FORGE credits and code doors lazy and stays within budget', async () => {
@@ -1782,6 +1834,8 @@ describe('entry points', () => {
         return chunk;
       }
       const connection = chunkOwning('src/bbs/connection.ts');
+      const bbsPayload = chunkOwning('src/content/bbs-browser.ts');
+      const reconstruction = chunkOwning('src/bbs/reconstruction.ts');
       const contributorView = chunkOwning('src/world/contributor-view.ts');
       const contributorData = chunkOwning('src/content/contributors-browser.ts');
       const hunter = chunkOwning('src/doors/signal-hunter/signal-hunter.ts');
@@ -1809,6 +1863,8 @@ describe('entry points', () => {
       const deferredRequest = new RegExp(filter);
       for (const { fileName } of new Set([
         connection,
+        bbsPayload,
+        reconstruction,
         contributorView,
         contributorData,
         hunter,
@@ -1831,6 +1887,23 @@ describe('entry points', () => {
       expect(reachableFrom(contributorView.fileName, false).has(contributorData.fileName)).toBe(
         true,
       );
+      const initial = chunks
+        .filter(({ fileName }) => startup.has(fileName))
+        .map(({ code }) => code)
+        .join('\n');
+      for (const marker of [
+        'maintenance-annex-fragments',
+        'spool-02-replay-receipt',
+        'unassigned-routing-entry',
+        'episode.002',
+        'R07-SPOOL-02',
+        'THE DEFERRED LINE',
+        'RETAINED MODULES CHECKED',
+        'Q17 HEADER DESK',
+        'LOCAL REPLAY AUDIT FILED',
+      ]) {
+        expect(initial).not.toContain(marker);
+      }
       const connected = reachableFrom(connection.fileName, true);
       expect(connected.has(hunter.fileName)).toBe(true);
       expect(connected.has(trader.fileName)).toBe(true);
@@ -1866,6 +1939,168 @@ describe('entry points', () => {
         build: { write: false },
       }),
     ).rejects.toThrow(/content\/transmissions\/t\.json: id:/);
+  });
+
+  it('the build rejects inconsistent dormant Annex data with its file and field', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'annex-build-'));
+    try {
+      cpSync('content', root, { recursive: true });
+      const file = join(root, 'bbs/maintenance-annex.json');
+      const annex = JSON.parse(readFileSync(file, 'utf8'));
+      annex.reconstructionCheck.recipe.reverse();
+      writeFileSync(file, JSON.stringify(annex));
+      await expect(
+        build({
+          configFile: false,
+          logLevel: 'silent',
+          plugins: [contentPlugin(root)],
+          build: { write: false },
+        }),
+      ).rejects.toThrow(/content\/bbs\/maintenance-annex\.json: reconstructionCheck\.recipe:/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('episode completion and Annex evidence', () => {
+  const annexFile = 'content/bbs/maintenance-annex.json';
+  const episodeFile = 'content/episodes/episode-002.json';
+  const fields = readContentDir('content');
+  const annex = bbsMessageBoardSchema.parse(fields[annexFile]);
+  const check = annex.reconstructionCheck!;
+
+  it('supports puzzle, fact and combined episode completion requirements', () => {
+    const legacy = episodeSchema.parse(fields['content/episodes/episode-000.json']);
+    const factOnly = episodeSchema.parse(fields[episodeFile]);
+    const combined = episodeSchema.parse({
+      id: 'combined',
+      title: 'Combined',
+      puzzles: ['puzzle.carrier'],
+      ending: ['End'],
+      completionFacts: ['flag:radio-ready'],
+    });
+    const data = freshSave(42);
+    data.puzzles.push(...legacy.puzzles);
+    expect(
+      completeEpisodes([legacy, factOnly, combined], data).completed.map(({ id }) => id),
+    ).toEqual(['episode.000']);
+    expect(data.profile.designation).toMatch(/^OBS-/);
+    const designation = data.profile.designation;
+    data.flags.push('radio-ready', 'spool-02-restored', 'manifest-r07-spool-02');
+    const missingPuzzle = freshSave(42);
+    missingPuzzle.flags.push('radio-ready');
+    expect(completeEpisodes([combined], missingPuzzle).completed).toEqual([]);
+    expect(completeEpisodes([factOnly, combined], data).completed.map(({ id }) => id)).toEqual([
+      'combined',
+    ]);
+    data.bbsReadMessages.push('message:spool-02-replay-receipt');
+    expect(completeEpisodes([factOnly], data).granted).toEqual(['completed:episode.002']);
+    expect(data.profile.designation).toBe(designation);
+  });
+
+  it('reports unknown completion facts and rejects empty criteria', () => {
+    const episode = episodeSchema.parse(fields[episodeFile]);
+    const invalid = loadContent({
+      ...fields,
+      [episodeFile]: {
+        ...episode,
+        completionFacts: [...episode.completionFacts!, 'bbs-read:unknown'],
+      },
+    }).errors;
+    expect(invalid).toContainEqual(
+      expect.objectContaining({ file: episodeFile, field: 'completionFacts.4' }),
+    );
+    expect(episodeSchema.safeParse({ ...episode, completionFacts: [] }).success).toBe(false);
+    expect(episodeSchema.safeParse({ ...episode, completionFacts: undefined }).success).toBe(false);
+    expect(
+      episodeSchema.safeParse({
+        ...episode,
+        puzzles: ['puzzle.carrier'],
+        completionFacts: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    ['manifestId', { manifestId: 'UNKNOWN' }],
+    [
+      'fragmentMessageIds.0',
+      { fragmentMessageIds: ['absent', ...check.fragmentMessageIds.slice(1)] },
+    ],
+    ['custody.originalsMessageId', { custody: { ...check.custody, originalsMessageId: 'absent' } }],
+    [
+      'custody.holdReceiptMessageId',
+      { custody: { ...check.custody, holdReceiptMessageId: 'absent' } },
+    ],
+    ['responseMessageId', { responseMessageId: 'absent' }],
+    ['episodeId', { episodeId: 'absent' }],
+    ['choices', { choices: [...check.choices.slice(1), check.choices[1]] }],
+    ['prerequisites', { prerequisites: check.prerequisites.slice(0, 1) }],
+  ])('rejects a bad Annex %s', (field, patch) => {
+    const result = loadContent({
+      ...fields,
+      [annexFile]: { ...annex, reconstructionCheck: { ...check, ...patch } },
+    });
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ file: annexFile, field: `reconstructionCheck.${field}` }),
+    );
+  });
+
+  it('shares the structured manifest and display, and rejects bad specs and copy seals', async () => {
+    const valid = loadContent(fields);
+    expect(valid.errors).toEqual([]);
+    const signed = valid.content.repairManifests[0]!;
+    const { manifest, manifestFact } = await import('../../src/doors/code-door-content.ts');
+    expect(manifest).toEqual({ ...signed, lines: describeRepairManifest(signed) });
+    expect(check.prerequisites.map(({ fact }) => fact)).toContain(manifestFact);
+    for (const modules of [
+      signed.modules.slice(1),
+      [signed.modules[0], ...signed.modules.slice(0, 2)],
+    ]) {
+      const result = loadContent({ ...fields, [repairManifestPath]: { ...signed, modules } });
+      expect(result.errors).toContainEqual(
+        expect.objectContaining({
+          file: annexFile,
+          field: 'reconstructionCheck.fragmentMessageIds',
+        }),
+      );
+    }
+    const copyFile = 'content/bbs/ghost-g17.json';
+    const edited = valid.content.bbs.find(({ id }) => id === 'ghost-g17')!;
+    assert(edited.kind === 'message');
+    const result = loadContent({
+      ...fields,
+      [copyFile]: { ...edited, dispatchCopy: { ...edited.dispatchCopy, seal: 'BAD' } },
+    });
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({
+        file: annexFile,
+        field: 'reconstructionCheck.custody.dispatchMessageIds.1',
+      }),
+    );
+  });
+
+  it('orders independent replay copies by delivery and retains their source records', () => {
+    const { content } = loadContent(fields);
+    function find(id: string) {
+      const record = content.bbs.find((record) => record.id === id);
+      return record?.kind === 'message' ? record : undefined;
+    }
+    const shuffled = {
+      ...check,
+      custody: { ...check.custody, dispatchMessageIds: ['ghost-g17', 'packet-p17'] },
+    };
+    const result = reconstructReplay(shuffled, find);
+    assert('replay' in result);
+    expect(result.replay.map(({ recordId, deliveryIndex }) => [recordId, deliveryIndex])).toEqual([
+      ['P17', 141],
+      ['G17', 142],
+    ]);
+    const packet = find('packet-p17')!;
+    const copy = result.replay[0]!;
+    expect(copy.body).toEqual(packet.body);
+    expect(copy.body).not.toBe(packet.body);
   });
 });
 

@@ -16,5 +16,6 @@ export function emptyContent(): Content {
     artifacts: [],
     screens: [],
     community: [],
+    repairManifests: [],
   };
 }

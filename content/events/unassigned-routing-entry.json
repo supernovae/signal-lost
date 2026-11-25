@@ -1,0 +1,5 @@
+{
+  "id": "unassigned-routing-entry",
+  "when": "completed:episode.002",
+  "effects": [{ "kind": "post-bulletin", "messageId": "unassigned-routing-entry" }]
+}

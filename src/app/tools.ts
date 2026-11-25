@@ -15,7 +15,7 @@ import { openCodePanel } from '../world/sector-view.ts';
 import type { Tool } from './hub.ts';
 
 export interface ToolContext {
-  content: Content;
+  content: Pick<Content, 'episodes' | 'sectors' | 'artifacts'>;
   game: Game;
   audio: GameAudio;
   echo: DialogueSource;

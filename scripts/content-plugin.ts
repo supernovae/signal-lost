@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { normalizePath, type Plugin } from 'vite';
+import { projectBbsContent, projectEntryContent } from '../src/content/browser-split.ts';
 import { buildContributorRecord, type ContributorRecord } from '../src/content/contributors.ts';
 import { readContentDir } from '../src/content/node.ts';
 import { formatErrors, loadContent, type LoadResult } from '../src/content/validate.ts';
@@ -7,6 +8,7 @@ import { formatErrors, loadContent, type LoadResult } from '../src/content/valid
 /** Validates authored content for the production entry, credits and manifest. */
 export function contentPlugin(root = resolve(import.meta.dirname, '../content')): Plugin {
   const browserModule = normalizePath(resolve(import.meta.dirname, '../src/content/browser.ts'));
+  const bbsModule = normalizePath(resolve(import.meta.dirname, '../src/content/bbs-browser.ts'));
   const contributorsModule = normalizePath(
     resolve(import.meta.dirname, '../src/content/contributors-browser.ts'),
   );
@@ -25,15 +27,16 @@ export function contentPlugin(root = resolve(import.meta.dirname, '../content'))
       contentPaths = Object.keys(files);
     },
     load(id) {
-      if (id !== browserModule && id !== contributorsModule) return;
+      if (id !== browserModule && id !== bbsModule && id !== contributorsModule) return;
       for (const path of contentPaths)
         this.addWatchFile(resolve(root, path.slice('content/'.length)));
-      const [name, data] =
-        id === browserModule
-          ? ['loadBundledContent', result.content]
-          : ['loadBundledContributors', contributors];
-      const payload = JSON.stringify(JSON.stringify(data));
-      return `export function ${name}() { return JSON.parse(${payload}); }`;
+      if (id === bbsModule)
+        return payloadExport('loadBundledBbsContent', projectBbsContent(result.content));
+      if (id === contributorsModule) return payloadExport('loadBundledContributors', contributors);
+      return [
+        payloadExport('loadBundledContent', result.content),
+        payloadExport('loadBundledEntryContent', projectEntryContent(result.content)),
+      ].join('\n');
     },
     generateBundle() {
       this.emitFile({
@@ -43,4 +46,8 @@ export function contentPlugin(root = resolve(import.meta.dirname, '../content'))
       });
     },
   };
+}
+
+function payloadExport(name: string, data: unknown): string {
+  return `export function ${name}() { return JSON.parse(${JSON.stringify(JSON.stringify(data))}); }`;
 }

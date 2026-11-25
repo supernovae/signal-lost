@@ -1,9 +1,12 @@
 import { evaluate } from '../content/conditions.ts';
+import { describeModule, describeRepairManifest } from '../content/repair-manifest.ts';
 import type {
   Artifact,
   BbsThread,
   BbsTone,
   DialogueLine,
+  Episode,
+  ReconstructionCheck,
   bbsOrderVerbs,
 } from '../content/schema.ts';
 import type { DoorListing } from '../doors/registry.ts';
@@ -13,6 +16,7 @@ import { mapNodes } from '../world/map.ts';
 import { bbsCopy, fill, messageCredit } from './copy.ts';
 import type { BbsOffer, Message, MessageBoard, Profile } from './offer.ts';
 import type { BbsEffect, BbsHistoryEntry, BbsSnapshot } from './progress.ts';
+import { compareReconstruction, reconstructReplay } from './reconstruction.ts';
 
 export { getBbsOffer } from './offer.ts';
 
@@ -33,7 +37,8 @@ type Route =
         | 'history';
     }
   | { phase: 'doors'; parent: 'directory' | 'menu' }
-  | { phase: 'board'; board: MessageBoard; draft: string[] }
+  | { phase: 'board'; board: MessageBoard; draft: string[]; compared: boolean }
+  | { phase: 'credits'; board: MessageBoard }
   | { phase: 'profile'; profile: Profile }
   | { phase: 'thread'; thread: BbsThread; board: MessageBoard };
 
@@ -63,6 +68,8 @@ export interface DispatchResult {
   opensDoor?: string;
   opensArtifact?: Artifact;
   opensSettings?: boolean;
+  opensCredits?: ReconstructionCheck['credits'];
+  completion?: { episode: Episode; audit: readonly string[] };
 }
 
 interface BbsDoors {
@@ -71,6 +78,7 @@ interface BbsDoors {
 }
 
 export type BbsSay = (characterId: string) => DialogueLine | undefined;
+export type BbsComplete = (effect: BbsEffect, episodeId: string) => Episode | undefined;
 type OrderCheck = NonNullable<MessageBoard['orderCheck']>;
 type OrderVerb = (typeof bbsOrderVerbs)[number];
 
@@ -90,8 +98,15 @@ const orderButton = (command: string, disabled: boolean): BbsAction => ({
   disabled,
 });
 
-function missingOrderEvidence(check: OrderCheck, facts: ReadonlySet<string>): string | undefined {
+function missingPrerequisite(
+  check: Pick<OrderCheck, 'prerequisites'>,
+  facts: ReadonlySet<string>,
+): string | undefined {
   return check.prerequisites.find(({ fact }) => !facts.has(fact))?.missingEvidence;
+}
+
+function recipeHeading(check: ReconstructionCheck): string {
+  return fill(check.copy.recipeHeading, { order: check.recipe.join(' → ') });
 }
 
 function messageOutput(message: Message): BbsOutput {
@@ -117,6 +132,7 @@ export function createBbs(
   snapshot: () => BbsSnapshot,
   doors?: BbsDoors,
   say?: BbsSay,
+  complete?: BbsComplete,
 ) {
   const { board, boards, threads, profiles, secrets, messages, accessLevels, artifacts } = offer;
   const facts = () => doors?.facts() ?? offer.initialFacts;
@@ -154,6 +170,45 @@ export function createBbs(
   const findCharacter = (id: string) => offer.characters.find((character) => character.id === id);
   const canTalk = (profile: Profile) =>
     Boolean(say && findCharacter(profile.characterId)?.lines.some((line) => line.kind === 'bbs'));
+  const findEvidence = (id: string) => messages.get(`message:${id}`);
+
+  function reconstructionGate(
+    board: MessageBoard,
+    check: ReconstructionCheck,
+    current: ReadonlySet<string>,
+  ): string | undefined {
+    const missing = missingPrerequisite(check, current);
+    if (missing) return missing;
+    if (!evaluate(board.requires, current)) return text.invalid;
+    if (!check.fragmentMessageIds.every((id) => current.has(`bbs-read:${id}`))) {
+      return check.copy.missingFragments;
+    }
+  }
+
+  function reconstructionActions(
+    check: ReconstructionCheck,
+    { board, compared }: Extract<Route, { phase: 'board' }>,
+  ): { actions: BbsAction[]; hint: string } {
+    const current = facts();
+    const missing = reconstructionGate(board, check, current);
+    if (missing) return { actions: [], hint: missing };
+    const manifest = offer.repairManifests.find(({ id }) => id === check.manifestId);
+    if (!manifest) return { actions: [], hint: check.copy.mismatch };
+    const actions: BbsAction[] = [{ command: 'COMPARE', label: check.copy.compare }];
+    if (current.has(`completed:${check.episodeId}`)) {
+      actions.push({
+        command: `RECONSTRUCT ${manifest.terms.operation} / ${manifest.terms.evidenceMode}`,
+        label: check.copy.audit,
+      });
+      if (check.credits) actions.push({ command: 'CREDITS', label: check.credits.label });
+    } else if (compared) {
+      for (const { operation, evidenceMode } of check.choices) {
+        const label = `${operation} / ${evidenceMode}`;
+        actions.push({ command: `RECONSTRUCT ${label}`, label });
+      }
+    }
+    return { actions, hint: compared ? check.copy.chooseMode : text.viewHint };
+  }
 
   function screen(): Screen {
     const { phase } = route;
@@ -225,10 +280,14 @@ export function createBbs(
       case 'board': {
         const { board, draft } = route;
         const threads = visibleThreads(board.id).map(({ id, title }) => link('THREAD', id, title));
+        if (board.reconstructionCheck) {
+          const { actions, hint } = reconstructionActions(board.reconstructionCheck, route);
+          return view([...threads, ...actions], hint);
+        }
         const check = board.orderCheck;
         if (!check) return view(threads, board.check?.prompt);
         const current = facts();
-        const missing = missingOrderEvidence(check, current);
+        const missing = missingPrerequisite(check, current);
         if (missing || !evaluate(board.requires, current)) return view(threads, missing);
         const operations = check.operations.map(({ token }) => token).sort();
         return view(
@@ -258,6 +317,8 @@ export function createBbs(
       }
       case 'people':
         return view(profiles.map(({ id, handle }) => link('PROFILE', id, handle)));
+      case 'credits':
+        return view([]);
       case 'profile':
         return view(canTalk(route.profile) ? [actionButton('TALK')] : []);
       case 'directory':
@@ -307,11 +368,12 @@ export function createBbs(
   function showBoard(next: MessageBoard): DispatchResult {
     const available = visibleThreads(next.id).length > 0;
     return enter(
-      { phase: 'board', board: next, draft: [] },
+      { phase: 'board', board: next, draft: [], compared: false },
       {
         tone: 'system',
         lines: [
           next.title,
+          ...(next.reconstructionCheck ? [recipeHeading(next.reconstructionCheck)] : []),
           ...next.description,
           ...(available || next.orderCheck ? [] : [text.noThreads]),
         ],
@@ -326,6 +388,7 @@ export function createBbs(
           ? section({ phase: 'directory' }, labels.DIRECTORY)
           : section({ phase: 'boards' }, labels.BOARDS);
       case 'thread':
+      case 'credits':
         return showBoard(route.board);
       case 'profile':
         return section({ phase: 'people' }, labels.PEOPLE);
@@ -423,7 +486,7 @@ export function createBbs(
     args: string[],
   ): DispatchResult {
     const current = facts();
-    const missing = missingOrderEvidence(check, current);
+    const missing = missingPrerequisite(check, current);
     if (missing) return system(missing);
     if (!evaluate(board.requires, current)) return system(text.invalid, screen().hint);
 
@@ -463,6 +526,86 @@ export function createBbs(
       return system(text.invalid, screen().hint);
     }
     return system(`STAGED ORDER: ${draft.join(' / ') || 'EMPTY'}`);
+  }
+
+  function checkReconstruction(
+    check: ReconstructionCheck,
+    currentRoute: Extract<Route, { phase: 'board' }>,
+    action: string,
+    args: string[],
+  ): DispatchResult {
+    const current = facts();
+    const missing = reconstructionGate(currentRoute.board, check, current);
+    if (missing) return system(missing);
+    const completed = current.has(`completed:${check.episodeId}`);
+    if (action === 'CREDITS') {
+      if (!completed || args.length || !check.credits) return system(text.invalid);
+      route = { phase: 'credits', board: currentRoute.board };
+      return { output: [], opensCredits: check.credits };
+    }
+    const manifest = offer.repairManifests.find(({ id }) => id === check.manifestId);
+    if (!manifest) return system(check.copy.mismatch);
+    const comparison = compareReconstruction(check, manifest, findEvidence);
+    if (!comparison.fragments) {
+      currentRoute.compared = false;
+      return system(check.copy.mismatch);
+    }
+    if (action === 'COMPARE') {
+      if (args.length) return system(text.invalid);
+      currentRoute.compared = true;
+      return system(
+        ...describeRepairManifest(manifest),
+        check.copy.comparisonHeading,
+        ...comparison.fragments.map(
+          (fragment) =>
+            `${describeModule(fragment)} | BOUNDARY: ${fragment.boundary.toUpperCase()}`,
+        ),
+        recipeHeading(check),
+        ...check.choices.map(
+          ({ operation, evidenceMode, result }) => `${operation} / ${evidenceMode} | ${result}`,
+        ),
+        ...(completed ? [] : [check.copy.chooseMode]),
+      );
+    }
+    if (!completed && !currentRoute.compared) return system(check.copy.missingComparison);
+    const mode = /^([A-Z]+)\s*\/\s*([A-Z]+)$/.exec(args.join(' ').toUpperCase());
+    const choice =
+      mode &&
+      check.choices.find(
+        ({ operation, evidenceMode }) => operation === mode[1] && evidenceMode === mode[2],
+      );
+    if (!choice) return system(check.copy.chooseMode);
+    const { terms } = manifest;
+    if (choice.operation !== terms.operation || choice.evidenceMode !== terms.evidenceMode) {
+      return system(choice.feedback);
+    }
+    const receipt = offer.bulletins.get(check.responseMessageId);
+    const result = reconstructReplay(check, findEvidence);
+    if (!receipt || !('replay' in result)) return system(check.copy.mismatch);
+    const audit = [
+      check.copy.auditHeading,
+      terms.originals,
+      ...result.replay.map(({ deliveryIndex, recordId, seal, originalSeal }) =>
+        fill(check.copy.auditRecord, {
+          delivery: String(deliveryIndex),
+          record: recordId,
+          replay: seal,
+          original: originalSeal,
+        }),
+      ),
+      ...result.hold,
+      ...result.replay.map(({ sender, recordId, note }) =>
+        fill(check.copy.auditNote, { sender, record: recordId, note }),
+      ),
+    ];
+    if (completed) return { output: [messageOutput(receipt), ...system(...audit).output] };
+    const episode = complete?.(
+      { history: { kind: 'read', id: receipt.key }, readKeys: [receipt.key] },
+      check.episodeId,
+    );
+    return episode
+      ? { output: [], completion: { episode, audit } }
+      : system(check.copy.saveRefused);
   }
 
   function fromMenu(action: string): DispatchResult | undefined {
@@ -627,6 +770,13 @@ export function createBbs(
         }
         return withHistory(showBoard(next), { kind: 'board', id: next.id });
       }
+    }
+    if (
+      route.phase === 'board' &&
+      route.board.reconstructionCheck &&
+      (action === 'COMPARE' || action === 'RECONSTRUCT' || action === 'CREDITS')
+    ) {
+      return checkReconstruction(route.board.reconstructionCheck, route, action, args);
     }
     if (
       route.phase === 'board' &&

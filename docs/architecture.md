@@ -30,7 +30,11 @@ The game is a static site: TypeScript, Vite, Three.js, and zod. All story text a
 
 ## Content pipeline
 
-`loadContent` validates a map of file paths to parsed JSON, and never throws for bad content. It returns typed content, errors with file and field, and a manifest. In development the browser loads `content/**/*.json` through `import.meta.glob` and validates it at startup. In production `scripts/content-plugin.ts` runs the same validation during `npm run build`, fails on errors, and supplies the normalized content to the browser entry. It also emits `content-manifest.json` with a content version hash. `npm run content:validate` is the same check from the command line.
+`loadContent` validates a map of parsed content files and returns typed content, file and field errors, and a manifest. The development browser and Node reader load the authored JSON and the shared JSONC repair manifest. In production `scripts/content-plugin.ts` validates the full tree during `npm run build` and fails on errors. The full normalized tree supplies the library export, contributor record and `content-manifest.json` hash. `npm run content:validate` runs the same checks from the command line.
+
+The production entry receives hub content, world events and the ordered endpoint notices used
+to offer CONNECT. CONNECT loads the deferred BBS endpoint records, BBS dialogue, doors, full event
+list and fact-backed episodes. Both scenes use the same save and shared world content.
 
 ## Network events and dialogue
 
@@ -40,6 +44,12 @@ when a new event fires. `settleEvents` repeatedly runs the first eligible unfire
 binary ID order. Event-granted flags can qualify further events. The loader rejects flag
 dependency cycles. The save preserves firing order and bulletin order, and the BBS combines
 posted IDs with its read ledger to derive `[NEW]` and `[READ]` in Messages.
+
+For an Annex reconstruction, BBS progress applies the receipt read to a candidate save, settles
+events, checks episode completion, then settles events again to publish completion bulletins.
+It writes the candidate once before updating the shared save. Only a committed transition opens
+the shared ending scene through the scene manager. Reopening a completed repair derives its
+audit from the authored evidence and saved completion fact.
 
 `createScriptedDialogue` implements the `DialogueSource` interface. The hub's ECHO tool, the
 configured BBS SYSOP and profile TALK select sources by character ID. The game remembers spoken

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { compareReconstruction, reconstructReplay } from '../bbs/reconstruction.ts';
 import {
   ADVENTURE_STATE_LIMIT,
   normalizeAdventureCommand,
@@ -15,6 +16,7 @@ import {
   type Manifest,
   type ManifestEntry,
 } from './manifest.ts';
+import { repairManifestFact, repairManifestPath, repairManifestSchema } from './repair-manifest.ts';
 import {
   accessLevelSchema,
   archiveSchema,
@@ -22,6 +24,7 @@ import {
   bbsCheckVerbs,
   bbsOrderVerbs,
   bbsPublicCommands,
+  bbsReconstructionVerbs,
   bbsSchema,
   capabilitySchema,
   characterSchema,
@@ -38,9 +41,11 @@ import {
   type Capability,
   type Content,
   type BbsRecord,
+  type BbsMessage,
   type DeclarativeDoor,
   type DoorMetadata,
   type NetworkEvent,
+  type ReconstructionCheck,
 } from './schema.ts';
 
 export interface ContentError {
@@ -63,9 +68,12 @@ export class JsonParseFailure {
   }
 }
 
-export function parseContentJson(text: string): unknown {
+export function parseContentJson(
+  text: string,
+  parse: (text: string) => unknown = JSON.parse,
+): unknown {
   try {
-    return JSON.parse(text);
+    return parse(text);
   } catch (error) {
     return new JsonParseFailure((error as Error).message);
   }
@@ -98,13 +106,15 @@ const SCHEMAS: Record<keyof Content, z.ZodType> = {
   artifacts: artifactSchema,
   screens: screenSchema,
   community: communitySchema,
+  repairManifests: repairManifestSchema,
 };
 
 function kindOf(path: string): keyof Content | undefined {
+  if (path.replace(/^\//, '') === repairManifestPath) return 'repairManifests';
   const parts = path.split('/');
   const directory = parts[parts.lastIndexOf('content') + 1];
   if (directory === 'access-levels') return 'accessLevels';
-  if (directory === 'accessLevels') return;
+  if (directory === 'accessLevels' || directory === 'repairManifests') return;
   return directory && Object.hasOwn(SCHEMAS, directory) ? (directory as keyof Content) : undefined;
 }
 
@@ -128,6 +138,7 @@ export function loadContent(
     artifacts: [],
     screens: [],
     community: [],
+    repairManifests: [],
   };
   const sources = new Map<object, { file: string; prefix: string }>();
   const entries: ManifestEntry[] = [];
@@ -300,15 +311,15 @@ function checkBbsReferences(
   );
   const commands = new Map<string, Set<string>>();
   const responseClaims = new Map<string, number>();
-  for (const { check, orderCheck } of boards.values()) {
-    const responseCheck = check ?? orderCheck;
+  for (const { check, orderCheck, reconstructionCheck } of boards.values()) {
+    const responseCheck = check ?? orderCheck ?? reconstructionCheck;
     if (!responseCheck) continue;
     const { responseMessageId: id } = responseCheck;
     responseClaims.set(id, (responseClaims.get(id) ?? 0) + 1);
   }
 
   for (const entry of boards.values()) {
-    const { check, orderCheck } = entry;
+    const { check, orderCheck, reconstructionCheck } = entry;
     check?.evidenceMessageIds.forEach((id, index) => {
       const field = `check.evidenceMessageIds.${index}`;
       const post = messages.get(id);
@@ -323,9 +334,22 @@ function checkBbsReferences(
       }
     });
 
-    const responseCheck = check ?? orderCheck;
+    if (reconstructionCheck) {
+      const onEndpoint = (post: BbsMessage) => boards.get(post.board)?.bbs === entry.bbs;
+      checkReconstructionReferences(
+        content,
+        entry.id,
+        reconstructionCheck,
+        messages,
+        publicPosts,
+        onEndpoint,
+        (field, message) => report(entry, `reconstructionCheck.${field}`, message),
+      );
+    }
+
+    const responseCheck = check ?? orderCheck ?? reconstructionCheck;
     if (!responseCheck) continue;
-    const field = orderCheck ? 'orderCheck.responseMessageId' : 'check.responseMessageId';
+    const field = `${orderCheck ? 'orderCheck' : reconstructionCheck ? 'reconstructionCheck' : 'check'}.responseMessageId`;
     const { responseMessageId: id } = responseCheck;
     const response = messages.get(id);
     if (!response?.eventOnly || response.board !== entry.bbs) {
@@ -405,7 +429,12 @@ function checkBbsReferences(
     if (entry.kind === 'secret') {
       const tokens =
         commands.get(entry.bbs) ??
-        new Set<string>([...bbsPublicCommands, ...bbsCheckVerbs, ...bbsOrderVerbs]);
+        new Set<string>([
+          ...bbsPublicCommands,
+          ...bbsCheckVerbs,
+          ...bbsOrderVerbs,
+          ...bbsReconstructionVerbs,
+        ]);
       const token = entry.command.toUpperCase();
       if (tokens.has(token))
         report(entry, 'command', `reserved or duplicate BBS command "${token}"`);
@@ -424,6 +453,66 @@ function checkBbsReferences(
       if (!reachable)
         report(entry, 'clueMessageId', 'secret needs a public thread clue on this endpoint');
     }
+  }
+}
+
+function checkReconstructionReferences(
+  content: Content,
+  boardId: string,
+  check: ReconstructionCheck,
+  messages: ReadonlyMap<string, BbsMessage>,
+  publicPosts: ReadonlySet<string>,
+  onEndpoint: (post: BbsMessage) => boolean,
+  report: Report,
+): void {
+  const manifest = content.repairManifests.find(({ id }) => id === check.manifestId);
+  if (!manifest) {
+    report('manifestId', `unknown verified repair manifest "${check.manifestId}"`);
+  } else {
+    if (!check.prerequisites.some(({ fact }) => fact === repairManifestFact(manifest))) {
+      report('prerequisites', 'reconstruction must require the verified manifest reward');
+    }
+    const comparison = compareReconstruction(check, manifest, (id) => messages.get(id));
+    if (comparison.problem) report(comparison.problem.field, comparison.problem.message);
+  }
+  check.fragmentMessageIds.forEach((id, index) => {
+    const post = messages.get(id);
+    if (!post || post.board !== boardId || post.eventOnly || !publicPosts.has(id)) {
+      report(
+        `fragmentMessageIds.${index}`,
+        'retained fragment must be a public thread message on this board',
+      );
+    }
+  });
+  const { custody } = check;
+  const custodyRefs = [
+    ['originalsMessageId', custody.originalsMessageId],
+    ['holdReceiptMessageId', custody.holdReceiptMessageId],
+    ...custody.dispatchMessageIds.map((id, index) => [`dispatchMessageIds.${index}`, id] as const),
+  ] as const;
+  for (const [field, id] of custodyRefs) {
+    const post = messages.get(id);
+    if (!post || post.eventOnly || !publicPosts.has(id) || !onEndpoint(post)) {
+      report(`custody.${field}`, 'custody record must be a public thread message on this endpoint');
+    }
+  }
+  const replay = reconstructReplay(check, (id) => messages.get(id));
+  if ('problem' in replay) report(replay.problem.field, replay.problem.message);
+
+  const episode = content.episodes.find(({ id }) => id === check.episodeId);
+  const requiredFacts = [
+    `bbs-read:${check.responseMessageId}`,
+    ...check.prerequisites.map(({ fact }) => fact),
+  ];
+  if (
+    !episode ||
+    episode.puzzles.length ||
+    !requiredFacts.every((fact) => episode.completionFacts?.includes(fact))
+  ) {
+    report(
+      'episodeId',
+      'reconstruction needs a fact-only episode that requires its receipt and prerequisites',
+    );
   }
 }
 
@@ -890,6 +979,9 @@ function checkReferences(
       }
     });
     episode.grants.forEach((g, i) => checkFact(g, episode, `grants.${i}`, true));
+    episode.completionFacts?.forEach((fact, i) =>
+      checkFact(fact, episode, `completionFacts.${i}`, false),
+    );
   }
   for (const puzzle of content.puzzles) {
     checkCondition(puzzle.requires, puzzle, 'requires');
@@ -922,6 +1014,9 @@ function checkReferences(
     if (entry.kind === 'message-board') {
       entry.orderCheck?.prerequisites.forEach(({ fact }, i) =>
         checkFact(fact, entry, `orderCheck.prerequisites.${i}.fact`, false),
+      );
+      entry.reconstructionCheck?.prerequisites.forEach(({ fact }, i) =>
+        checkFact(fact, entry, `reconstructionCheck.prerequisites.${i}.fact`, false),
       );
     }
     if (

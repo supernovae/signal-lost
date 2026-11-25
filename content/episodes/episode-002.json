@@ -1,0 +1,22 @@
+{
+  "id": "episode.002",
+  "title": "CHAPTER 2: THE DEFERRED LINE",
+  "puzzles": [],
+  "completionFacts": [
+    "completed:episode.000",
+    "flag:spool-02-restored",
+    "flag:manifest-r07-spool-02",
+    "bbs-read:spool-02-replay-receipt"
+  ],
+  "ending": [
+    "SPOOL-02: LOCAL REPLAY VERIFIED",
+    "",
+    "ECHO: The seals agree. PACKET and GHOST wrote those notes before they disappeared.",
+    "ECHO: The migration hold kept them in Q17. Delivery indexes 141 and 142 record their later dispatch.",
+    "",
+    "SYSOP: The three retained modules rebuilt the local spool under the signed manifest. Dispatch is readable in a separate replay copy. The originals remain read-only.",
+    "",
+    "ECHO: The queue reader recovered one more routing-table entry. Its destination is prepared. The registered-operator field is blank.",
+    "ECHO: Find UNASSIGNED in DEEP FIELD MESSAGES."
+  ]
+}

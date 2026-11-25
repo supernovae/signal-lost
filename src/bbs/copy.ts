@@ -1,7 +1,7 @@
 import copy from '../../content/bbs/interface.json' with { type: 'json' };
-import { bbsInterfaceSchema, type Archive } from '../content/schema.ts';
+import type { Archive, BbsRecord } from '../content/schema.ts';
 
-export const bbsCopy = bbsInterfaceSchema.parse(copy);
+export const bbsCopy = copy satisfies Omit<Extract<BbsRecord, { kind: 'interface' }>, 'kind'>;
 
 export function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{([a-z]+)\}/g, (placeholder: string, key: string) =>

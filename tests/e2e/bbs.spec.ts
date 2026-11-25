@@ -555,6 +555,293 @@ test('restores SPOOL-02 and returns to the Annex by keyboard after reload', asyn
   await expect(latest).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
 });
 
+const finaleJourneys = [
+  {
+    proof: 'headers',
+    door: 'signal-hunter',
+    input: 'keyboard',
+    motion: 'explicit-reduce',
+    forge: false,
+  },
+  { proof: 'headers', door: 'relay-trader', input: 'pointer', motion: 'animate', forge: true },
+  {
+    proof: 'custody',
+    door: 'signal-hunter',
+    input: 'pointer',
+    motion: 'system-reduce',
+    forge: true,
+  },
+  { proof: 'custody', door: 'relay-trader', input: 'keyboard', motion: 'animate', forge: false },
+] as const;
+
+for (const { proof, door, input, motion, forge } of finaleJourneys) {
+  test(`Chapter 2 from Episode 000 through ${proof} and ${door} by ${input}`, async ({
+    page,
+    baseURL,
+  }) => {
+    const legacy = JSON.parse(completedV1) as {
+      puzzles: string[];
+      flags: string[];
+      preferences: Partial<ReturnType<typeof freshSave>['preferences']>;
+    };
+    if (!forge) {
+      legacy.puzzles = legacy.puzzles.filter((id) => id !== 'puzzle.service');
+      legacy.flags = legacy.flags.filter(
+        (id) => id !== 'service-panel-open' && id !== 'forge-opened',
+      );
+    }
+    const animate = motion === 'animate';
+    legacy.preferences.reducedMotion = motion === 'system-reduce' ? null : !animate;
+    await page.emulateMedia({
+      reducedMotion: motion === 'system-reduce' ? 'reduce' : 'no-preference',
+    });
+    await seedSaveOnce(page, JSON.stringify(legacy));
+
+    const successfulAssets = new Set<string>();
+    const assetProblems: string[] = [];
+    const base = new URL(baseURL!);
+    page.on('requestfailed', (request) => assetProblems.push(request.url()));
+    page.on('response', (response) => {
+      const url = new URL(response.url());
+      if (!response.ok() || url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
+        assetProblems.push(response.url());
+      } else {
+        successfulAssets.add(url.pathname);
+      }
+    });
+    const loaded = (chunk: RegExp) => [...successfulAssets].some((path) => chunk.test(path));
+    const creditChunk = /\/contributor-view-[^/]+\.js$/;
+    const log = page.getByRole('log');
+    const system = log.locator('.system').last();
+    const doorLog = log.locator('.door').last();
+    const button = (name: string) => page.getByRole('button', { name, exact: true });
+    const activate = (name: string) => activateBbsButton(page, input, name);
+    const type = (command: string) => typeCommand(page, 'BBS>', command);
+    const controls = () =>
+      page.getByRole('navigation', { name: 'Tools' }).getByRole('button').allTextContents();
+    const saved = () => page.evaluate((key) => localStorage.getItem(key), SAVE_KEY);
+    const entry = page.getByRole('button', { name: /UNASSIGNED \/ routing-table entry/ });
+    const receipt = page.getByRole('button', { name: /SPOOL-02 replay receipt/ });
+    const annex = 'MAINTENANCE ANNEX';
+    const mode = 'REPLAY / PRESERVE';
+    const intro = 'SPOOL-02: LOCAL REPLAY VERIFIED';
+    const reveal = 'PACKET and GHOST wrote those notes before they disappeared.';
+
+    async function signIn() {
+      if (input === 'keyboard') await typeCommand(page, 'OBS>', 'CONNECT');
+      else await connect(page).click();
+      await activate('USE DESIGNATION (OBS-02FF)');
+      await expect(system).toContainText('DEEP FIELD MAIN MENU');
+    }
+
+    async function openAnnex() {
+      await activate('MAIN MENU');
+      await activate('DIRECTORY');
+      await activate(annex);
+    }
+
+    async function unpublished() {
+      if (await button('MAIN MENU').isVisible()) await activate('MAIN MENU');
+      await activate('MESSAGES');
+      await expect(entry).toHaveCount(0);
+      await expect(receipt).toHaveCount(0);
+    }
+
+    await page.goto('./');
+    await joinWithEnter(page);
+    const hubTools = await controls();
+    await signIn();
+    await unpublished();
+    await activate('MAIN MENU');
+    await activate('BOARDS');
+    await activate('THE FORGOTTEN BOARD');
+    await activate('Delivered messages and queue index');
+    await type('SEARCH Q17');
+    await expect(log).toContainText('Q17 batch located');
+    await activate('BACK');
+    if (proof === 'headers') {
+      await activate('Departure ledger');
+      await activate('BACK');
+    }
+    await activate('BACK');
+    await activate(proof === 'headers' ? 'Q17 HEADER DESK' : 'Q17 CUSTODY DESK');
+    const evidence =
+      proof === 'headers'
+        ? ['Q17 message headers', 'Queue policy']
+        : ['Sealed originals', 'Dispatch comparison', 'Migration hold receipt'];
+    for (const title of evidence) {
+      await activate(title);
+      await activate('BACK');
+    }
+    await type('SUBMIT DEFERRED');
+    await expect(log).toContainText(
+      proof === 'headers'
+        ? 'DEFERRED VERIFIED / HEADER ANALYSIS'
+        : 'DEFERRED VERIFIED / CUSTODY AUDIT',
+    );
+    await activate('MAIN MENU');
+    await activate('DOORS');
+    await activate('[OPEN forgotten-archive] THE FORGOTTEN ARCHIVE');
+    await expect(doorLog).toContainText('ARCHIVE VESTIBULE');
+    await type('TRAINING SHELF');
+    for (const fragment of ['SEAL', 'ROUTE', 'ACK']) await type(`INSPECT ${fragment} FRAGMENT`);
+    await type('SEAL / ROUTE / ACK');
+    await expect(doorLog).toContainText('PROCEDURE LEARNED.');
+    await activate('EXIT');
+    await activate('DIRECTORY');
+    await activate('RECOVERY CONSOLE');
+    if (input === 'keyboard') await type('APPLY SEAL / ROUTE / ACK');
+    else {
+      for (const operation of ['SEAL', 'ROUTE', 'ACK']) await activate(`ORDER ${operation}`);
+      await activate('APPLY');
+    }
+    await expect(log).toContainText('SPOOL-02 WORKING SPOOL RESTORED');
+    await activate('MAIN MENU');
+    await expect(system).toContainText('ACCESS LEVEL: MAINTAINER');
+    await activate('DOORS');
+    if (door === 'signal-hunter') {
+      await activate('[OPEN signal-hunter] SIGNAL HUNTER');
+      await expect(doorLog).toContainText('H3 | SPOOL-02 / INTACT');
+      await type('VERIFY H3');
+    } else {
+      await activate('[OPEN relay-trader] RELAY TRADER');
+      await expect(doorLog).toContainText('NULL QUAY acknowledgement desk');
+      for (const command of ['CLAIM ENVELOPE', 'STAMP ACK SPOOL-02', 'EXCHANGE'])
+        await type(command);
+    }
+    await expect(doorLog).toContainText('SIGNED REPAIR MANIFEST R07-SPOOL-02');
+    await activate('EXIT');
+    await unpublished();
+    await openAnnex();
+    await expect(system).toContainText('SPOOL-02 BUILD RECIPE: SC-1 → QR-1 → RW-1');
+    await expect(button('COMPARE')).toHaveCount(0);
+    await activate('Retained source fragments');
+    await expect(log).toContainText('END replay-writer / SEAL RW-1 VERIFIED');
+    await activate('BACK');
+    await type(`RECONSTRUCT ${mode}`);
+    await expect(system).toContainText('COMPARE the retained fragments and recipe');
+    await type('CREDITS');
+    await expect(system).toContainText('COMMAND UNAVAILABLE HERE.');
+    await expect(button('CONTRIBUTOR RECORD')).toHaveCount(0);
+    await activate('COMPARE');
+    await expect(system).toContainText(
+      'RW-1 / replay-writer | REQUIRES: QR-1 and SC-1 | BOUNDARY: COMPLETE',
+    );
+    await activate('REPLAY / REPLACE');
+    await expect(system).toContainText('REPLACE would overwrite the sealed originals');
+    await expect(page.locator('body')).toHaveAttribute('data-scene', 'bbs');
+    await unpublished();
+    await openAnnex();
+    await activate('COMPARE');
+
+    if (animate) {
+      const endingClock = new Date('2025-01-01T00:00:00Z');
+      await page.clock.install({ time: endingClock });
+      await page.clock.pauseAt(new Date(endingClock.getTime() + 10_000));
+    }
+    if (input === 'pointer') await button(mode).click({ force: animate });
+    else await type(`RECONSTRUCT ${mode}`);
+    await expect(page.locator('body')).toHaveAttribute('data-scene', 'ending');
+    const ending = page.locator('.ending').getByRole('log');
+    const proceed = button('CONTINUE');
+    await expect(ending).toHaveAttribute('aria-live', 'polite');
+    await expect(proceed).toBeFocused();
+    if (animate) {
+      await page.clock.runFor(1);
+      await expect(ending).toContainText(intro);
+      await expect(ending).not.toContainText(reveal);
+      await page.clock.runFor(700);
+      await expect(ending).not.toContainText(reveal);
+      await page.clock.runFor(700);
+      await expect(ending).toContainText(reveal);
+      await expect(ending).not.toContainText('LOCAL REPLAY AUDIT');
+    } else {
+      expect(await ending.textContent()).toContain(intro);
+      expect(await ending.textContent()).toContain(reveal);
+      expect(await ending.textContent()).toContain(
+        'DELIVERY 141 / P17 | REPLAY SEAL P17 = ORIGINAL SEAL P17',
+      );
+      expect(await ending.textContent()).toContain(
+        'DELIVERY 142 / G17 | REPLAY SEAL G17 = ORIGINAL SEAL G17',
+      );
+    }
+    const completed = JSON.parse((await saved())!) as ReturnType<typeof freshSave>;
+    expect(completed.episodes).toEqual(['episode.000', 'episode.002']);
+    expect(completed.profile.designation).toBe('OBS-02FF');
+    expect(completed.flags.filter((flag) => flag === 'manifest-r07-spool-02')).toHaveLength(1);
+    expect(
+      completed.flags.filter((flag) => /^deferred-(headers|custody)-verified$/.test(flag)),
+    ).toEqual([proof === 'headers' ? 'deferred-headers-verified' : 'deferred-custody-verified']);
+    expect(completed.flags.includes('forge-opened')).toBe(forge);
+    if (input === 'keyboard') await page.keyboard.press('Enter');
+    else await proceed.click({ force: animate });
+    if (animate) {
+      await page.clock.fastForward(30_000);
+      await page.clock.resume();
+    }
+    await expect(page.getByLabel('OBS>')).toBeFocused();
+    expect(await controls()).toEqual(hubTools);
+    await expect(log).not.toContainText(intro);
+    await expect(log).not.toContainText('LOCAL REPLAY AUDIT');
+    await typeCommand(page, 'OBS>', 'NETWORK MAP');
+    const map = page.getByRole('group', { name: 'Network map' });
+    await expect(map.getByRole('button', { name: 'SPOOL-02', exact: true })).toBeVisible();
+    await map.getByRole('button', { name: 'SILENT OBSERVATORY' }).click();
+    await expect(log).toContainText('NO CARRIER');
+    await expect(log).toContainText('2 OBSERVERS REQUIRED');
+
+    await page.getByLabel('OBS>').focus();
+    await signIn();
+    await activate('MESSAGES');
+    await expect(receipt).toContainText('[READ]');
+    await expect(entry).toContainText('[NEW]');
+    await entry.click();
+    await expect(log.locator('.recovered').last()).toContainText('REGISTERED OPERATOR: [EMPTY]');
+    await expect(log.locator('.recovered').last()).toContainText(
+      'Who prepared a destination with no registered operator?',
+    );
+    await openAnnex();
+    await activate('VIEW REPLAY AUDIT');
+    await expect(system).toContainText('RETAINED PACKET NOTE / P17: Acknowledge receipt.');
+    await expect(system).toContainText('RETAINED GHOST NOTE / G17: Keep the signature');
+    const creditsBefore = await saved();
+    expect(loaded(creditChunk)).toBe(false);
+    await activate('CONTRIBUTOR RECORD');
+    const credits = page.getByRole('region', { name: 'Contributor record' });
+    await expect(credits).toBeVisible();
+    await expect(credits).toContainText('checked and independently reviewed');
+    await expect(credits).toContainText('This build credits maintainers.');
+    await expect(credits.getByRole('listitem')).toHaveText('SIGNAL//LOST maintainers (supernovae)');
+    await expect(log.getByRole('region', { name: 'Contributor record' })).toHaveCount(0);
+    await expect(credits).not.toContainText(/FROM:|OBSERVERS ONLINE|TKEEL/);
+    await expect(button('CLOSE CONTRIBUTOR RECORD')).toBeFocused();
+    if (input === 'keyboard') await page.keyboard.press('Enter');
+    else await button('CLOSE CONTRIBUTOR RECORD').click();
+    await expect(credits).toHaveCount(0);
+    await expect(page.getByLabel('BBS>')).toBeFocused();
+    expect(await saved()).toBe(creditsBefore);
+    expect(loaded(creditChunk)).toBe(true);
+    expect(loaded(/\/connection-[^/]+\.js$/)).toBe(true);
+    expect(loaded(new RegExp(`/${door}-[^/]+\\.js$`))).toBe(true);
+    expect(loaded(/\/code-door-content-[^/]+\.js$/)).toBe(true);
+    expect(assetProblems).toEqual([]);
+
+    await page.reload();
+    await joinWithEnter(page);
+    await expect(page.locator('.ending')).toHaveCount(0);
+    await signIn();
+    await activate('DOORS');
+    await expect(button('[OPEN signal-hunter] SIGNAL HUNTER')).toBeVisible();
+    await expect(button('[OPEN relay-trader] RELAY TRADER')).toBeVisible();
+    await openAnnex();
+    await activate('VIEW REPLAY AUDIT');
+    await expect(system).toContainText('DELIVERY 142 / G17 | REPLAY SEAL G17 = ORIGINAL SEAL G17');
+    await activate('MAIN MENU');
+    await activate('MESSAGES');
+    await expect(entry).toContainText('[READ]');
+  });
+}
+
 test('opens Signal Hunter after restoration, verifies the manifest and solves practice by keyboard', async ({
   page,
 }) => {

@@ -10,5 +10,11 @@
     "REQUIRES: none. Verifies the seal on each stored record.",
     "END signature-checker / SEAL SC-1 VERIFIED",
     "GHOST: Keep the original seal with the record. A verified copy needs a trace back."
-  ]
+  ],
+  "retainedModule": {
+    "name": "signature-checker",
+    "seal": "SC-1",
+    "boundary": "complete",
+    "dependencies": []
+  }
 }

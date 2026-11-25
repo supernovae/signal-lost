@@ -9,5 +9,10 @@
     "Preservation note",
     "Keep the signature with the note when you move it. Otherwise the copy remembers the words and forgets whose they were.",
     "Signed G17"
-  ]
+  ],
+  "dispatchCopy": {
+    "recordId": "G17",
+    "seal": "G17",
+    "deliveryIndex": 142
+  }
 }

@@ -382,6 +382,16 @@
       "text": [
         "ECHO: The Annex shows which fragments the queue reader and replay writer depend on. I can read those dependencies now."
       ]
+    },
+    {
+      "id": "echo.bbs.spool-02-reconstructed",
+      "kind": "bbs",
+      "when": "completed:episode.002",
+      "priority": 6,
+      "text": [
+        "ECHO: The replay audit matches the held dispatch to the original seals. I can cite the SPOOL-02 receipt for the delivery record now.",
+        "ECHO: UNASSIGNED is in MESSAGES. The queue reader found a destination with no registered operator."
+      ]
     }
   ]
 }
