@@ -1,0 +1,34 @@
+{
+  "kind": "adventure",
+  "id": "first-door",
+  "name": "FIRST DOOR",
+  "description": "Read and file the workbench log.",
+  "attribution": { "author": "SIGNAL//LOST maintainers" },
+  "version": 1,
+  "requires": { "all": [] },
+  "rewards": ["flag:bench-log-filed"],
+  "returnTo": "bbs-menu",
+  "startLocationId": "bench",
+  "locations": [
+    {
+      "id": "bench",
+      "title": "WORKBENCH",
+      "description": ["A log lies open on the workbench."],
+      "actions": [
+        { "kind": "inspect", "command": "READ LOG", "label": "Read log", "itemId": "log" },
+        {
+          "kind": "end",
+          "command": "FILE LOG",
+          "label": "File log",
+          "when": "read:log",
+          "endingId": "filed"
+        }
+      ]
+    }
+  ],
+  "items": [{ "id": "log", "text": ["The switch passed its last test."] }],
+  "flags": [],
+  "endings": [{ "id": "filed", "text": ["The bench log is filed."] }],
+  "orderPuzzles": [],
+  "rewardRules": [{ "reward": "flag:bench-log-filed", "when": "completed:filed" }]
+}

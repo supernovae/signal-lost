@@ -38,6 +38,7 @@ import {
   type Capability,
   type Content,
   type BbsRecord,
+  type DeclarativeDoor,
   type DoorMetadata,
   type NetworkEvent,
 } from './schema.ts';
@@ -60,6 +61,26 @@ export class JsonParseFailure {
   constructor(message: string) {
     this.message = message;
   }
+}
+
+export function parseContentJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return new JsonParseFailure((error as Error).message);
+  }
+}
+
+function schemaErrors(file: string, error: z.ZodError): ContentError[] {
+  return error.issues.map((issue) => ({
+    file,
+    field: issue.path.join('.') || '(root)',
+    message: issue.message,
+  }));
+}
+
+function jsonError(file: string, failure: JsonParseFailure): ContentError {
+  return { file, field: '(file)', message: `invalid JSON: ${failure.message}` };
 }
 
 const SCHEMAS: Record<keyof Content, z.ZodType> = {
@@ -111,16 +132,10 @@ export function loadContent(
   const sources = new Map<object, { file: string; prefix: string }>();
   const entries: ManifestEntry[] = [];
 
-  function recordIssues(file: string, error: z.ZodError): void {
-    for (const issue of error.issues) {
-      errors.push({ file, field: issue.path.join('.') || '(root)', message: issue.message });
-    }
-  }
-
   for (const file of Object.keys(files).sort()) {
     const raw = files[file];
     if (raw instanceof JsonParseFailure) {
-      errors.push({ file, field: '(file)', message: `invalid JSON: ${raw.message}` });
+      errors.push(jsonError(file, raw));
       continue;
     }
     const kind = kindOf(file);
@@ -130,7 +145,7 @@ export function loadContent(
     }
     const parsed = SCHEMAS[kind].safeParse(raw);
     if (!parsed.success) {
-      recordIssues(file, parsed.error);
+      schemaErrors(file, parsed.error).forEach((error) => errors.push(error));
       continue;
     }
     const value = parsed.data as never;
@@ -156,7 +171,7 @@ export function loadContent(
   for (const { metadata, source } of codeDoors) {
     const parsed = doorMetadataSchema.safeParse(metadata);
     if (!parsed.success) {
-      recordIssues(source, parsed.error);
+      schemaErrors(source, parsed.error).forEach((error) => errors.push(error));
       continue;
     }
     doors.push(parsed.data);
@@ -178,6 +193,87 @@ export function loadContent(
 }
 
 type Sources = Map<object, { file: string; prefix: string }>;
+
+export type DoorSelection =
+  | { kind: 'declarative'; door: DeclarativeDoor }
+  | { kind: 'code'; registration: CodeDoorRegistration };
+
+type DoorValidation = DoorSelection | { kind: 'error'; errors: ContentError[] };
+
+export function validateDoorById(
+  files: Record<string, unknown>,
+  id: string,
+  codeDoors: readonly CodeDoorRegistration[] = CODE_DOORS,
+): DoorValidation {
+  const doorFiles = Object.keys(files)
+    .filter((file) => file.startsWith('content/doors/') && file.endsWith('.json'))
+    .sort();
+  const matchingFiles = doorFiles.filter((file) => asRecord(files[file])?.id === id);
+  const matchingCode = codeDoors.filter(({ metadata }) => asRecord(metadata)?.id === id);
+  const sources = [...matchingFiles, ...matchingCode.map(({ source }) => source)];
+  if (sources.length > 1) {
+    return {
+      kind: 'error',
+      errors: sources.map((file, index) => ({
+        file,
+        field: 'id',
+        message: `duplicate door id "${id}" (also defined in ${sources.filter((_, i) => i !== index).join(', ')})`,
+      })),
+    };
+  }
+
+  let selection: DoorSelection;
+  let file: string;
+  const declarative = matchingFiles[0];
+  const code = matchingCode[0];
+  if (code) {
+    file = code.source;
+    const parsed = doorMetadataSchema.safeParse(code.metadata);
+    if (!parsed.success) return { kind: 'error', errors: schemaErrors(file, parsed.error) };
+    selection = { kind: 'code', registration: { ...code, metadata: parsed.data } };
+  } else if (declarative) {
+    file = declarative;
+    const parsed = declarativeDoorSchema.safeParse(files[file]);
+    if (!parsed.success) return { kind: 'error', errors: schemaErrors(file, parsed.error) };
+    selection = { kind: 'declarative', door: parsed.data };
+  } else {
+    const fallbackErrors = doorFiles
+      .filter((path) => path.split('/').at(-1) === `${id}.json`)
+      .flatMap((path) => {
+        const raw = files[path];
+        if (raw instanceof JsonParseFailure) return [jsonError(path, raw)];
+        const parsed = doorMetadataSchema.shape.id.safeParse(asRecord(raw)?.id);
+        return parsed.success
+          ? []
+          : parsed.error.issues.map(({ message }) => ({ file: path, field: 'id', message }));
+      });
+    return {
+      kind: 'error',
+      errors: fallbackErrors.length
+        ? fallbackErrors
+        : [{ file: 'content/doors', field: 'id', message: `unknown door "${id}"` }],
+    };
+  }
+
+  const references = createFactReferences();
+  for (const [path, raw] of Object.entries(files)) {
+    const kind = kindOf(path);
+    if (kind) indexFactRecord(references, kind, raw);
+  }
+  codeDoors.forEach(({ metadata }) => indexFactRecord(references, 'doorMetadata', metadata));
+
+  const errors: ContentError[] = [];
+  const report: Report = (field, message) => errors.push({ file, field, message });
+  checkDoorFacts(
+    selection.kind === 'code' ? selection.registration.metadata : selection.door,
+    references,
+    report,
+  );
+  if (selection.kind === 'declarative' && selection.door.kind === 'adventure') {
+    checkAdventureReferences(selection.door, report);
+  }
+  return errors.length ? { kind: 'error', errors } : selection;
+}
 
 function checkBbsReferences(
   content: Content,
@@ -601,54 +697,143 @@ function checkAdventureReferences(
   });
 }
 
+type Report = (field: string, message: string) => void;
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+}
+
+function createFactReferences() {
+  return {
+    ids: new Map<keyof Content, Set<string>>(),
+    messages: new Set<string>(),
+    granted: new Set<string>(),
+  };
+}
+
+type FactReferences = ReturnType<typeof createFactReferences>;
+
+function addFlagGrants(references: FactReferences, value: unknown): void {
+  if (!Array.isArray(value)) return;
+  for (const fact of value) {
+    if (typeof fact === 'string' && fact.startsWith('flag:')) references.granted.add(fact);
+  }
+}
+
+/** Read only fields that can supply a saved-fact reference. */
+function indexFactRecord(
+  references: FactReferences,
+  kind: keyof Content | 'doorMetadata',
+  value: unknown,
+): void {
+  const record = asRecord(value);
+  if (!record) return;
+  const id = doorMetadataSchema.shape.id.safeParse(record.id);
+  if (!id.success) return;
+
+  switch (kind) {
+    case 'episodes':
+    case 'puzzles':
+    case 'sectors':
+    case 'transmissions':
+    case 'archives':
+    case 'accessLevels': {
+      const ids = references.ids.get(kind) ?? new Set<string>();
+      ids.add(id.data);
+      references.ids.set(kind, ids);
+      break;
+    }
+    case 'bbs':
+      if (record.kind === 'message') references.messages.add(id.data);
+      break;
+    case 'community':
+      for (const member of ['transmissions', 'archives'] as const) {
+        const entries = record[member];
+        if (Array.isArray(entries)) {
+          for (const entry of entries) indexFactRecord(references, member, entry);
+        }
+      }
+      break;
+    case 'events':
+      if (Array.isArray(record.effects)) {
+        for (const value of record.effects) {
+          const effect = asRecord(value);
+          if (effect?.kind === 'grant-flag' && typeof effect.flag === 'string') {
+            references.granted.add(`flag:${effect.flag}`);
+          }
+        }
+      }
+      break;
+  }
+
+  switch (kind) {
+    case 'episodes':
+    case 'puzzles':
+      addFlagGrants(references, record.grants);
+      break;
+    case 'sectors':
+      addFlagGrants(references, record.grantsOnEnter);
+      break;
+    case 'artifacts':
+      addFlagGrants(references, record.grantsOnOpen);
+      break;
+    case 'doors':
+      if (record.kind === 'adventure' || record.kind === 'trivia') {
+        addFlagGrants(references, record.rewards);
+      }
+      break;
+    case 'doorMetadata':
+      addFlagGrants(references, record.rewards);
+      break;
+  }
+}
+
+function factError(references: FactReferences, fact: string, isGrant: boolean): string | undefined {
+  const [head, name] = fact.split(':') as [FactPrefix, string];
+  const kind = FACT_KINDS[head];
+  if (kind === null) {
+    if (!isGrant && !references.granted.has(fact)) return `nothing grants "${fact}"`;
+  } else if (head === 'bbs-read') {
+    if (!references.messages.has(name)) return `unknown BBS message "${name}"`;
+  } else if (!references.ids.get(kind)?.has(name)) {
+    return `unknown fact "${fact}": no ${kind} record has id "${name}"`;
+  }
+}
+
+function checkDoorFacts(door: DoorMetadata, references: FactReferences, report: Report): void {
+  for (const fact of factsIn(door.requires)) {
+    const message = factError(references, fact, false);
+    if (message) report('requires', message);
+  }
+  door.rewards.forEach((fact, index) => {
+    const message = factError(references, fact, true);
+    if (message) report(`rewards.${index}`, message);
+  });
+}
+
 function checkReferences(
   content: Content,
   doors: readonly DoorMetadata[],
   sources: Sources,
   errors: ContentError[],
 ): void {
-  const ids = Object.fromEntries(
-    (Object.keys(content) as (keyof Content)[]).map((kind) => [
-      kind,
-      new Set(content[kind].map((r) => r.id)),
-    ]),
-  ) as Record<keyof Content, Set<string>>;
+  const references = createFactReferences();
+  for (const kind of Object.keys(content) as (keyof Content)[]) {
+    if (kind === 'community' || kind === 'doors') continue;
+    for (const record of content[kind]) indexFactRecord(references, kind, record);
+  }
+  for (const door of doors) indexFactRecord(references, 'doorMetadata', door);
+  const { ids } = references;
   const messages = new Map(
     content.bbs.filter((entry) => entry.kind === 'message').map((entry) => [entry.id, entry]),
   );
 
-  const granted = new Set<string>();
-  for (const record of [...content.episodes, ...content.puzzles]) {
-    record.grants.forEach((g) => granted.add(g));
-  }
-  content.sectors.forEach((s) => s.grantsOnEnter.forEach((g) => granted.add(g)));
-  content.artifacts.forEach((a) => a.grantsOnOpen.forEach((g) => granted.add(g)));
-  doors.forEach((door) => door.rewards.forEach((g) => granted.add(g)));
-  for (const event of content.events) {
-    for (const effect of event.effects) {
-      if (effect.kind === 'grant-flag') granted.add(`flag:${effect.flag}`);
-    }
-  }
-
   const checkFact = (fact: string, record: object, field: string, isGrant: boolean): void => {
     const { file, prefix } = sources.get(record)!;
-    const [head, name] = fact.split(':') as [FactPrefix, string];
-    const kind = FACT_KINDS[head];
-    if (kind === null) {
-      if (!isGrant && !granted.has(fact)) {
-        errors.push({ file, field: prefix + field, message: `nothing grants "${fact}"` });
-      }
-    } else if (head === 'bbs-read') {
-      if (!messages.has(name)) {
-        errors.push({ file, field: prefix + field, message: `unknown BBS message "${name}"` });
-      }
-    } else if (!ids[kind].has(name)) {
-      errors.push({
-        file,
-        field: prefix + field,
-        message: `unknown fact "${fact}": no ${kind} record has id "${name}"`,
-      });
-    }
+    const message = factError(references, fact, isGrant);
+    if (message) errors.push({ file, field: prefix + field, message });
   };
   const checkCondition = (condition: Condition | undefined, record: object, field: string) => {
     factsIn(condition).forEach((f) => checkFact(f, record, field, false));
@@ -699,7 +884,7 @@ function checkReferences(
 
   for (const episode of content.episodes) {
     episode.puzzles.forEach((puzzle, i) => {
-      if (!ids.puzzles.has(puzzle)) {
+      if (!ids.get('puzzles')?.has(puzzle)) {
         const { file } = sources.get(episode)!;
         errors.push({ file, field: `puzzles.${i}`, message: `unknown puzzle "${puzzle}"` });
       }
@@ -711,8 +896,10 @@ function checkReferences(
     puzzle.grants.forEach((g, i) => checkFact(g, puzzle, `grants.${i}`, true));
   }
   for (const door of doors) {
-    checkCondition(door.requires, door, 'requires');
-    door.rewards.forEach((g, i) => checkFact(g, door, `rewards.${i}`, true));
+    const { file, prefix } = sources.get(door)!;
+    checkDoorFacts(door, references, (field, message) =>
+      errors.push({ file, field: prefix + field, message }),
+    );
   }
   for (const door of content.doors) {
     if (door.kind === 'adventure') {
@@ -740,7 +927,7 @@ function checkReferences(
     if (
       entry.kind === 'message-board' &&
       entry.access &&
-      !ids.accessLevels.has(entry.access.level)
+      !ids.get('accessLevels')?.has(entry.access.level)
     ) {
       errors.push({
         file,
@@ -751,7 +938,7 @@ function checkReferences(
     if (entry.kind !== 'board') continue;
     entry.status.forEach(({ when }, i) => checkCondition(when, entry, `status.${i}.when`));
     entry.archiveIds.forEach((id, index) => {
-      if (!ids.archives.has(id)) {
+      if (!ids.get('archives')?.has(id)) {
         errors.push({ file, field: `archiveIds.${index}`, message: `unknown archive "${id}"` });
       }
     });
@@ -774,7 +961,7 @@ function checkReferences(
         lineSources.set(line.id, file);
       }
       checkCondition(line.when, character, `lines.${i}.when`);
-      if (line.failures && !ids.puzzles.has(line.failures.puzzle)) {
+      if (line.failures && !ids.get('puzzles')?.has(line.failures.puzzle)) {
         errors.push({
           file,
           field: `lines.${i}.failures.puzzle`,
@@ -787,7 +974,7 @@ function checkReferences(
     checkCondition(sector.visibleWhen, sector, 'visibleWhen');
     checkCondition(sector.enterableWhen, sector, 'enterableWhen');
     sector.grantsOnEnter.forEach((g, i) => checkFact(g, sector, `grantsOnEnter.${i}`, true));
-    if (sector.puzzle && !ids.puzzles.has(sector.puzzle)) {
+    if (sector.puzzle && !ids.get('puzzles')?.has(sector.puzzle)) {
       const { file } = sources.get(sector)!;
       errors.push({ file, field: 'puzzle', message: `unknown puzzle "${sector.puzzle}"` });
     }

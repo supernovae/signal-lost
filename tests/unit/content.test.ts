@@ -11,8 +11,9 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { build } from 'vite';
-import { afterEach, assert, describe, expect, it } from 'vitest';
+import { afterEach, assert, describe, expect, it, vi } from 'vitest';
 import { contentPlugin } from '../../scripts/content-plugin.ts';
 import { getBbsOffer } from '../../src/bbs/bbs.ts';
 import { createBbsDoorSession } from '../../src/bbs/door-session.ts';
@@ -31,7 +32,7 @@ import {
   type DoorMetadata,
   type TriviaDoor,
 } from '../../src/content/schema.ts';
-import { loadContent } from '../../src/content/validate.ts';
+import { loadContent, parseContentJson, validateDoorById } from '../../src/content/validate.ts';
 import type { CodeDoorRegistration } from '../../src/doors/contract.ts';
 import { createDoorHost } from '../../src/doors/host.ts';
 import { createDoorRegistry } from '../../src/doors/registry.ts';
@@ -180,6 +181,150 @@ function firstError(files: Record<string, unknown>) {
   expect(errors.length).toBeGreaterThan(0);
   return errors[0]!;
 }
+
+describe('validating one door', () => {
+  const id = DOOR_META.id;
+  const code: CodeDoorRegistration = {
+    source: 'src/doors/reviewed.ts',
+    metadata: { ...DOOR_META, id: 'reviewed-door', rewards: ['flag:code-reward'] },
+    load: vi.fn(async () => {
+      throw new Error('validation must never load the door lifecycle');
+    }),
+  };
+
+  it('selects by declared ID and ignores unrelated malformed doors', () => {
+    const files = {
+      ...validFiles(),
+      'content/doors/test-quiz.json': parseContentJson('{'),
+      'content/doors/another.json': { id: 'another', kind: 'adventure' },
+    };
+    expect(validateDoorById(files, id, [])).toEqual({ kind: 'declarative', door: trivia() });
+    expect(validateDoorById(files, 'test', [])).toEqual({
+      kind: 'error',
+      errors: [{ file: 'content/doors', field: 'id', message: 'unknown door "test"' }],
+    });
+  });
+
+  it.each([
+    [parseContentJson('{'), '(file)', 'invalid JSON:'],
+    [{ ...trivia(), id: 'INVALID ID' }, 'id', 'use lowercase letters'],
+    [{ kind: 'trivia' }, 'id', 'expected string'],
+  ])('diagnoses a malformed selected file by its basename', (raw, field, message) => {
+    const file = 'content/doors/test-quiz.json';
+    expect(validateDoorById({ [file]: raw }, id, [])).toEqual({
+      kind: 'error',
+      errors: [{ file, field, message: expect.stringContaining(message) }],
+    });
+  });
+
+  it('reports schema issues on the selected door', () => {
+    const door = trivia();
+    door.questions[0]!.answer = 10;
+    expect(validateDoorById({ [DOOR_FILE]: door }, id, [])).toEqual({
+      kind: 'error',
+      errors: [
+        {
+          file: DOOR_FILE,
+          field: 'questions.0.answer',
+          message: 'answer must be a zero-based index into options',
+        },
+      ],
+    });
+  });
+
+  it('reports the files defining a duplicate ID across declarative and code doors', () => {
+    const collision = { ...code, metadata: { ...code.metadata, id } };
+    const other = 'content/doors/copy.json';
+    const files = { ...validFiles(), [other]: trivia() };
+    expect(validateDoorById(files, id, [collision])).toEqual({
+      kind: 'error',
+      errors: [
+        { file: other, field: 'id', message: expect.stringContaining(collision.source) },
+        { file: DOOR_FILE, field: 'id', message: expect.stringContaining(other) },
+        { file: collision.source, field: 'id', message: expect.stringContaining(DOOR_FILE) },
+      ],
+    });
+    expect(code.load).not.toHaveBeenCalled();
+  });
+
+  it('checks the same global facts as the bulk loader without loading code', () => {
+    const files = validFiles();
+    const requires = {
+      all: [
+        'completed:e',
+        'solved:p.code',
+        'discovered:s',
+        'acquired:community.tx',
+        'read:community.ar',
+        'bbs-read:post',
+        'flag:ended',
+        'flag:puzzle-checked',
+        'flag:sector-entered',
+        'flag:artifact-opened',
+        'flag:event-fired',
+        'flag:other-door-complete',
+        'flag:code-reward',
+      ],
+    };
+    files[DOOR_FILE] = { ...trivia(), requires };
+    for (const [path, field, flags] of [
+      ['content/puzzles/raster.json', 'grants', ['flag:puzzle-checked']],
+      ['content/sectors/s.json', 'grantsOnEnter', ['flag:sector-entered']],
+      ['content/artifacts/a.json', 'grantsOnOpen', ['flag:artifact-opened']],
+    ] as const) {
+      files[path] = { ...(files[path] as object), [field]: flags };
+    }
+    files['content/events/example.json'] = {
+      id: 'example',
+      when: 'completed:e',
+      effects: [{ kind: 'grant-flag', flag: 'event-fired' }],
+    };
+    files['content/doors/other.json'] = {
+      ...trivia(),
+      id: 'other-door',
+      rewards: ['flag:other-door-complete'],
+    };
+    expect(loadContent(files, [code]).errors).toEqual([]);
+    expect(validateDoorById(files, id, [code])).toMatchObject({
+      kind: 'declarative',
+      door: { requires },
+    });
+    expect(validateDoorById(files, code.metadata.id, [code])).toEqual({
+      kind: 'code',
+      registration: code,
+    });
+    expect(code.load).not.toHaveBeenCalled();
+  });
+
+  it('keeps missing fact diagnostics scoped to the selected door', () => {
+    const files = {
+      ...validFiles(),
+      [DOOR_FILE]: {
+        ...trivia(),
+        requires: { all: ['flag:unknown', 'bbs-read:board', 'acquired:missing'] },
+        rewards: ['read:missing'],
+      },
+      'content/events/broken.json': {
+        id: 'broken',
+        effects: [null, { kind: 'grant-flag', flag: {} }],
+      },
+    };
+    const { errors } = loadContent(files, []);
+    expect(errors.some(({ file }) => file === 'content/events/broken.json')).toBe(true);
+    const selected = validateDoorById(files, id, []);
+    expect(selected).toEqual({
+      kind: 'error',
+      errors: errors.filter(({ file }) => file === DOOR_FILE),
+    });
+    assert(selected.kind === 'error');
+    expect(selected.errors.map(({ message }) => message)).toEqual([
+      'nothing grants "flag:unknown"',
+      'unknown BBS message "board"',
+      'unknown fact "acquired:missing": no transmissions record has id "missing"',
+      'unknown fact "read:missing": no archives record has id "missing"',
+    ]);
+  });
+});
 
 describe('adventure references', () => {
   const file = 'content/doors/forgotten-archive.json';
@@ -1353,6 +1498,78 @@ describe('entry points', () => {
     );
     expect(JSON.parse(manifest.source)).toStrictEqual(expected.manifest);
   });
+
+  it('the production build excludes the door preview and preserves the lazy door and budgets', async () => {
+    const originalNodeEnv = process.env['NODE_ENV'];
+    process.env['NODE_ENV'] = 'production';
+    try {
+      const result = await build({
+        base: '/signal-lost/',
+        mode: 'production',
+        logLevel: 'silent',
+        build: { write: false },
+      });
+      const builds = Array.isArray(result) ? result : [result];
+      expect(builds).toHaveLength(1);
+      const [bundle] = builds;
+      assert(bundle && 'output' in bundle, 'Expected an in-memory production bundle');
+      const { output } = bundle;
+      const previewMarkers = /door-preview|Door preview|openDoorPreview|fresh preview/;
+      for (const file of output) {
+        expect(file.fileName).not.toMatch(previewMarkers);
+        if (file.type === 'chunk') {
+          expect(file.facadeModuleId ?? '').not.toMatch(previewMarkers);
+          for (const module of file.moduleIds) expect(module).not.toMatch(previewMarkers);
+          expect(file.code).not.toMatch(previewMarkers);
+        } else if (file.fileName.endsWith('.html')) {
+          expect(String(file.source)).not.toMatch(previewMarkers);
+        }
+      }
+      expect(output.map(({ fileName }) => fileName)).toContain('index.html');
+      const manifest = output.find(({ fileName }) => fileName === 'content-manifest.json');
+      assert(manifest?.type === 'asset' && typeof manifest.source === 'string');
+      const entries = JSON.parse(manifest.source).entries as { id: string; kind: string }[];
+      expect(entries.filter(({ kind }) => kind === 'doors').map(({ id }) => id)).toEqual(
+        expect.arrayContaining(['forgotten-archive', 'relay-trivia']),
+      );
+      expect(manifest.source).not.toContain('first-door');
+
+      const chunks = output.filter((file) => file.type === 'chunk');
+      const entry = chunks.find((file) => file.isEntry && /\/index-.*\.js$/.test(file.fileName));
+      const environment = chunks.find(({ fileName }) => /\/environment-.*\.js$/.test(fileName));
+      const hunter = chunks.find(({ moduleIds }) =>
+        moduleIds.some((id) => id.endsWith('/src/doors/signal-hunter/signal-hunter.ts')),
+      );
+      assert(entry && environment && hunter);
+      const entryFile = entry.fileName;
+      function reachableFromEntry(includeDynamic: boolean): Set<string> {
+        const reachable = new Set([entryFile]);
+        for (const name of reachable) {
+          const chunk = chunks.find(({ fileName }) => fileName === name);
+          chunk?.imports.forEach((fileName) => reachable.add(fileName));
+          if (includeDynamic) {
+            chunk?.dynamicImports.forEach((fileName) => reachable.add(fileName));
+          }
+        }
+        return reachable;
+      }
+      expect(reachableFromEntry(false).has(hunter.fileName)).toBe(false);
+      expect(reachableFromEntry(true).has(hunter.fileName)).toBe(true);
+      expect(hunter.isDynamicEntry).toBe(true);
+
+      const entryKib = gzipSync(entry.code).length / 1024;
+      const environmentKib = gzipSync(environment.code).length / 1024;
+      const hunterKib = gzipSync(hunter.code).length / 1024;
+      console.info(
+        `Production gzip (KiB) — entry ${entryKib.toFixed(3)}, environment ${environmentKib.toFixed(3)}, Signal Hunter ${hunterKib.toFixed(3)}`,
+      );
+      expect(entryKib).toBeLessThanOrEqual(60);
+      expect(environmentKib).toBeLessThanOrEqual(170);
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env['NODE_ENV'];
+      else process.env['NODE_ENV'] = originalNodeEnv;
+    }
+  }, 30_000);
 
   it('the build rejects invalid content', async () => {
     const root = tree('t.json', { id: 'BAD ID', title: 'T', body: [] });

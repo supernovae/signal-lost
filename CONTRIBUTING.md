@@ -23,6 +23,8 @@ npm run dev
 
 Adding a transmission or archive entry only takes a JSON file. [docs/content-authoring.md](docs/content-authoring.md) walks through one from start to finish.
 
+To build a BBS adventure, start with the [door authoring guide](docs/door-authoring.md).
+
 Before opening a pull request, run:
 
 ```bash

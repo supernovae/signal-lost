@@ -128,6 +128,8 @@ lines. Conversation is scripted, and facts and unlocks are independent of the li
 
 ## BBS adventures
 
+Follow the [door authoring guide](door-authoring.md) to copy, check and preview your first door.
+
 Add an adventure as a JSON file under `content/doors/` with `kind` set to `adventure`.
 The global `requires` condition controls which signed-in players can open the door.
 Set `startLocationId`, give each location a title and description, and list its actions

@@ -13,6 +13,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "content:validate": "node scripts/validate-content.ts",
+    "door:check": "node scripts/check-door.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint . && tsc --noEmit",
