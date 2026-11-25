@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fill } from '../../bbs/copy.ts';
+import { manifest, manifestFact, parseDoorContent } from '../code-door-content.ts';
 import { defineDoor, type DoorProgress, type DoorScreen } from '../contract.ts';
 import {
   choices,
@@ -12,23 +13,15 @@ import {
   type Scenario,
 } from './scenario.ts';
 
-const manifestFact = 'flag:manifest-r07-spool-02';
 const cardId = z.enum(['H1', 'H2', 'H3']);
 const tierId = z.enum(DIFFICULTIES);
 const line = z.string().min(1);
 // Vite's application transform reads these files when it processes the lazy door module.
-const assets = import.meta.glob<string>(
-  ['/content/code-doors/signal-hunter.jsonc', '/content/code-doors/manifest-r07-spool-02.jsonc'],
-  { eager: true, query: '?raw', import: 'default' },
-);
-
-function readAsset(path: string): unknown {
-  // Prettier adds trailing commas to JSONC. Keep commas inside quoted strings intact.
-  const json = assets[path]!.replace(/"(?:[^"\\]|\\.)*"|,(?=\s*[}\]])/g, (token) =>
-    token === ',' ? '' : token,
-  );
-  return JSON.parse(json);
-}
+const assets = import.meta.glob<string>('/content/code-doors/signal-hunter.jsonc', {
+  eager: true,
+  query: '?raw',
+  import: 'default',
+});
 
 const copy = z
   .strictObject({
@@ -53,10 +46,7 @@ const copy = z
       tiers: z.record(tierId, z.strictObject({ name: line, rule: line, feedback: line })),
     }),
   })
-  .parse(readAsset('/content/code-doors/signal-hunter.jsonc'));
-const manifest = z
-  .strictObject({ id: line, target: line, lines: z.array(line).min(1) })
-  .parse(readAsset('/content/code-doors/manifest-r07-spool-02.jsonc'));
+  .parse(parseDoorContent(assets['/content/code-doors/signal-hunter.jsonc']!));
 
 const roundState = z
   .strictObject({

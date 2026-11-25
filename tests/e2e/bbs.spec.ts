@@ -631,6 +631,77 @@ test('opens Signal Hunter after restoration, verifies the manifest and solves pr
   await expect(log.getByText('SIGNED IN AS OBS-02FF', { exact: true })).toHaveCount(1);
 });
 
+for (const input of ['keyboard', 'pointer'] as const) {
+  test(`relay trader restores and completes a fixed-seed trade by ${input}`, async ({ page }) => {
+    await seedSaveOnce(page, recoverySave());
+    await page.goto('./');
+    const log = page.getByRole('log');
+    const system = log.locator('.system').last();
+    const door = log.locator('.door').last();
+    const traderName = '[OPEN relay-trader] RELAY TRADER';
+    const trader = page.getByRole('button', { name: traderName, exact: true });
+    const activate = (name: string) => activateBbsButton(page, input, name);
+    const type = (command: string) => typeCommand(page, 'BBS>', command);
+
+    async function signIn() {
+      await joinWithEnter(page);
+      if (input === 'pointer') await connect(page).click();
+      else await typeCommand(page, 'OBS>', 'CONNECT');
+      await activate('USE DESIGNATION (OBS-02FF)');
+      await expect(system).toContainText('DEEP FIELD MAIN MENU');
+    }
+
+    await signIn();
+    await activate('DOORS');
+    await expect(door).toContainText('DEEP FIELD DOOR DIRECTORY');
+    await expect(trader).toHaveCount(0);
+    await type('OPEN relay-trader');
+    await expect(log.locator('.restricted').last()).toContainText('DOOR UNAVAILABLE.');
+    await activate('BACK');
+    await activate('DIRECTORY');
+    await activate('RECOVERY CONSOLE');
+    await type('APPLY SEAL / ROUTE / ACK');
+    await expect(log).toContainText('SPOOL-02 WORKING SPOOL RESTORED. SEALED ORIGINALS PRESERVED.');
+    await activate('BACK');
+    await activate('DOORS');
+    await activate(traderName);
+    await expect(door).toContainText('PACKET: NULL QUAY acknowledgement desk.');
+
+    if (input === 'keyboard') await type('MARKET');
+    else await activate('[MARKET] Open market');
+    await expect(door).toContainText('Outpost: NULL QUAY | Credits: 12 | Cargo: 0/3');
+    await expect(door).toContainText(
+      'Power cell | Buy 3 | Sell 1 | Stock 6 | Demand 1 | A charging bank keeps cells plentiful',
+    );
+    await expect(door).toContainText('SWITCHYARD | Toll 2 | Safe passage.');
+    await expect(door).toContainText(
+      'FAR RELAY | Toll 1 | Shortcut: 1 in 4 chance to lose one carried unit.',
+    );
+
+    await activate('[BUY POWER CELL] Buy Power cell');
+    await expect(door).toContainText('Outpost: NULL QUAY | Credits: 9 | Cargo: 1/3');
+    if (input === 'keyboard') await type('TRAVEL SWITCHYARD');
+    else await activate('[TRAVEL SWITCHYARD] Travel to SWITCHYARD');
+    await expect(door).toContainText('Outpost: SWITCHYARD | Credits: 7 | Cargo: 1/3');
+
+    await page.reload();
+    await signIn();
+    await activate('DOORS');
+    await activate(traderName);
+    await expect(door).toContainText('Outpost: SWITCHYARD | Credits: 7 | Cargo: 1/3');
+    await expect(door).toContainText(
+      'Power cell | Buy 12 | Sell 10 | Stock 1 | Demand 6 | The switching crews need spare cells',
+    );
+    await activate('[SELL POWER CELL] Sell Power cell');
+    await expect(door).toContainText('Outpost: SWITCHYARD | Credits: 17 | Cargo: 0/3');
+    await expect(door).toContainText('Power cell | Buy 12 | Sell 10 | Stock 1 | Demand 5');
+    await activate('EXIT');
+    await expect(system).toContainText('DEEP FIELD MAIN MENU');
+    await expect(page.getByLabel('BBS>')).toBeFocused();
+    await expect(log.getByText('SIGNED IN AS OBS-02FF', { exact: true })).toHaveCount(1);
+  });
+}
+
 test('stages, clears and applies the recovery order with pointer controls', async ({ page }) => {
   await seedSaveOnce(page, recoverySave());
   await page.goto('./');
