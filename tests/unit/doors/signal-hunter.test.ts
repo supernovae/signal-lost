@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import deepField from '../../../content/bbs/deep-field.json';
 import { getBbsOffer } from '../../../src/bbs/bbs.ts';
 import { createBbsDoorSession } from '../../../src/bbs/door-session.ts';
-import { readContentDir } from '../../../src/content/node.ts';
-import { loadContent } from '../../../src/content/validate.ts';
+import { bbsBoardSchema } from '../../../src/content/schema.ts';
+import { CODE_DOORS } from '../../../src/doors/code-doors.ts';
 import type { DoorProgress, DoorScreen } from '../../../src/doors/contract.ts';
 import { createDoorHost } from '../../../src/doors/host.ts';
 import { createDoorRegistry } from '../../../src/doors/registry.ts';
 import { generateScenario, type Difficulty } from '../../../src/doors/signal-hunter/scenario.ts';
 import { createSignalHunterDoor } from '../../../src/doors/signal-hunter/signal-hunter.ts';
-import { settleEvents } from '../../../src/progress/events.ts';
 import {
   factsOf,
   freshSave,
@@ -17,6 +17,7 @@ import {
   type SaveData,
   type SaveStorage,
 } from '../../../src/progress/save.ts';
+import { emptyContent } from '../helpers.ts';
 
 const hunter = 'signal-hunter';
 const manifestFlag = 'manifest-r07-spool-02';
@@ -58,7 +59,8 @@ const tiers: Record<Difficulty, { domain: string[]; feedback: RegExp; rule: RegE
 const difficulties = Object.keys(tiers) as Difficulty[];
 const progress: DoorProgress = { hasFact: () => false };
 const traderProgress: DoorProgress = { hasFact: (fact) => fact === manifestFact };
-const bundled = loadContent(readContentDir('content'));
+const boardContent = { ...emptyContent(), bbs: [bbsBoardSchema.parse(deepField)] };
+const hunterRegistration = CODE_DOORS.find(({ metadata }) => metadata.id === hunter)!;
 
 function begin(seed: number, difficulty: Difficulty) {
   const running = createSignalHunterDoor(seed).launch(progress);
@@ -158,10 +160,9 @@ function seedBoard(seed = 42, restored = true, traderFirst = false) {
 async function openBoard(storage: SaveStorage) {
   const { data, persist, status } = openSaveSession(storage, () => 0xabcdef);
   expect(status).toBe('loaded');
-  const { content } = bundled;
-  const settle = vi.fn((candidate: SaveData) => settleEvents(content.events, candidate));
-  const host = createDoorHost(createDoorRegistry(content.doors), data, persist, settle);
-  const bbs = createBbsDoorSession(getBbsOffer(content, factsOf(data))!, () => data, host);
+  const settle = vi.fn<(candidate: SaveData) => void>();
+  const host = createDoorHost(createDoorRegistry([], [hunterRegistration]), data, persist, settle);
+  const bbs = createBbsDoorSession(getBbsOffer(boardContent, factsOf(data))!, () => data, host);
   async function run(command: string) {
     return (await bbs.dispatch(command))!.output.flatMap(({ lines }) => lines);
   }
@@ -328,7 +329,6 @@ describe('Signal Hunter in the shipped BBS', () => {
   ])(
     'rejects %s and awards the manifest only for H3 without practice or Trader',
     async (card, rejection) => {
-      expect(bundled.errors).toEqual([]);
       const { storage } = seedBoard();
       const board = await openBoard(storage);
       expect(board.commands()).toContain(openHunter);

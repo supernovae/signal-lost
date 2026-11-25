@@ -10,6 +10,7 @@ const DOCS = [
   'AGENTS.md',
   'docs/architecture.md',
   'docs/content-authoring.md',
+  'docs/door-authoring.md',
   'docs/game-design.md',
   'docs/swarmos.md',
   'docs/roadmap.md',
@@ -22,6 +23,13 @@ describe('documentation', () => {
     for (const [, target] of text.matchAll(/\]\((?!https?:|#)([^)#]+)(#[^)]*)?\)/g)) {
       expect(existsSync(join(dirname(doc), target!)), `${doc} -> ${target}`).toBe(true);
     }
+  });
+
+  it.each([
+    ['CONTRIBUTING.md', 'docs/door-authoring.md'],
+    ['docs/content-authoring.md', 'door-authoring.md'],
+  ])('%s links to the door authoring guide', (doc, link) => {
+    expect(readFileSync(doc, 'utf8')).toContain(`](${link})`);
   });
 });
 
