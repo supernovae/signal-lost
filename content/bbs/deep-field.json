@@ -25,6 +25,10 @@
     {
       "when": "flag:deferred-verified",
       "text": "Q17 PROOF: DEFERRED VERIFIED. Confirmation filed in MESSAGES."
+    },
+    {
+      "when": "flag:spool-02-order-learned",
+      "text": "TRAINING COMPLETE. Open DIRECTORY / RECOVERY CONSOLE."
     }
   ],
   "doorError": "DOOR CARRIER LOST. BACK AT DEEP FIELD."

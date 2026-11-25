@@ -49,6 +49,13 @@
       },
       "priority": 4,
       "text": ["HEADER PROOF AND CUSTODY AUDIT FILED. ORIGINALS REMAIN READ-ONLY."]
+    },
+    {
+      "id": "sysop.bbs.spool-02-restored",
+      "kind": "bbs",
+      "when": "flag:spool-02-restored",
+      "priority": 5,
+      "text": ["MAINTAINER GRANTED. ORIGINAL REMAINS READ-ONLY.", "WORKING COPY ACCESS ONLY."]
     }
   ]
 }

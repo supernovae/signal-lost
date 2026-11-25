@@ -1,5 +1,5 @@
 import { evaluate } from '../content/conditions.ts';
-import type { BbsThread, BbsTone, DialogueLine } from '../content/schema.ts';
+import type { BbsThread, BbsTone, DialogueLine, bbsOrderVerbs } from '../content/schema.ts';
 import type { DoorListing } from '../doors/registry.ts';
 import { deriveAccessLevel, hasAccessLevel } from '../progress/access.ts';
 import { normalizeHandle } from '../progress/save.ts';
@@ -26,7 +26,7 @@ type Route =
         | 'history';
     }
   | { phase: 'doors'; parent: 'directory' | 'menu' }
-  | { phase: 'board'; board: MessageBoard }
+  | { phase: 'board'; board: MessageBoard; draft: string[] }
   | { phase: 'profile'; profile: Profile }
   | { phase: 'thread'; thread: BbsThread; board: MessageBoard };
 
@@ -63,6 +63,8 @@ interface BbsDoors {
 }
 
 export type BbsSay = (characterId: string) => DialogueLine | undefined;
+type OrderCheck = NonNullable<MessageBoard['orderCheck']>;
+type OrderVerb = (typeof bbsOrderVerbs)[number];
 
 const { actions: labels, text } = bbsCopy;
 const actionButton = (command: keyof typeof labels, label = labels[command]): BbsAction => ({
@@ -74,6 +76,15 @@ const link = (verb: string, id: string, label: string): BbsAction => ({
   label,
 });
 const sessionActions = [actionButton('HELP'), actionButton('DISCONNECT')];
+const orderButton = (command: string, disabled: boolean): BbsAction => ({
+  command,
+  label: command,
+  disabled,
+});
+
+function missingOrderEvidence(check: OrderCheck, facts: ReadonlySet<string>): string | undefined {
+  return check.prerequisites.find(({ fact }) => !facts.has(fact))?.missingEvidence;
+}
 
 function messageOutput(message: Message): BbsOutput {
   return {
@@ -103,10 +114,15 @@ export function createBbs(
   const facts = () => doors?.facts() ?? offer.initialFacts;
   let route: Route = { phase: 'offline' };
 
-  const visibleBoards = () => {
+  const visibleBoards = (phase: 'boards' | 'directory') => {
     const current = facts();
-    return boards.filter((entry) => evaluate(entry.requires, current));
+    return boards.filter(
+      (entry) =>
+        Boolean(entry.directory) === (phase === 'directory') && evaluate(entry.requires, current),
+    );
   };
+  const boardLinks = (phase: 'boards' | 'directory') =>
+    visibleBoards(phase).map(({ id, title }) => link('BOARD', id, title));
   const visibleMessages = () => {
     const current = facts();
     return [
@@ -197,12 +213,29 @@ export function createBbs(
         );
       }
       case 'boards':
-        return view(visibleBoards().map(({ id, title }) => link('BOARD', id, title)));
-      case 'board':
+        return view(boardLinks('boards'));
+      case 'board': {
+        const { board, draft } = route;
+        const threads = visibleThreads(board.id).map(({ id, title }) => link('THREAD', id, title));
+        const check = board.orderCheck;
+        if (!check) return view(threads, board.check?.prompt);
+        const current = facts();
+        const missing = missingOrderEvidence(check, current);
+        if (missing || !evaluate(board.requires, current)) return view(threads, missing);
+        const operations = check.operations.map(({ token }) => token).sort();
         return view(
-          visibleThreads(route.board.id).map(({ id, title }) => link('THREAD', id, title)),
-          route.board.check?.prompt,
+          [
+            ...threads,
+            ...operations.map((token) => ({
+              ...orderButton(`ORDER ${token}`, draft.includes(token)),
+              selected: draft.includes(token),
+            })),
+            orderButton('CLEAR', !draft.length),
+            orderButton('APPLY', draft.length !== operations.length),
+          ],
+          check.prompt,
         );
+      }
       case 'thread': {
         if (!visiblePosts(route.thread).length) return view([]);
         const selected = selectedReply(route.thread);
@@ -220,7 +253,11 @@ export function createBbs(
       case 'profile':
         return view(canTalk(route.profile) ? [actionButton('TALK')] : []);
       case 'directory':
-        return view([...(doors ? [actionButton('DOORS')] : []), actionButton('NETWORK')]);
+        return view([
+          ...(doors ? [actionButton('DOORS')] : []),
+          actionButton('NETWORK'),
+          ...boardLinks('directory'),
+        ]);
       default:
         return view([]);
     }
@@ -261,10 +298,14 @@ export function createBbs(
   function showBoard(next: MessageBoard): DispatchResult {
     const available = visibleThreads(next.id).length > 0;
     return enter(
-      { phase: 'board', board: next },
+      { phase: 'board', board: next, draft: [] },
       {
         tone: 'system',
-        lines: [next.title, ...next.description, ...(available ? [] : [text.noThreads])],
+        lines: [
+          next.title,
+          ...next.description,
+          ...(available || next.orderCheck ? [] : [text.noThreads]),
+        ],
       },
     );
   }
@@ -272,7 +313,9 @@ export function createBbs(
   function back(): DispatchResult {
     switch (route.phase) {
       case 'board':
-        return section({ phase: 'boards' }, labels.BOARDS);
+        return route.board.directory
+          ? section({ phase: 'directory' }, labels.DIRECTORY)
+          : section({ phase: 'boards' }, labels.BOARDS);
       case 'thread':
         return showBoard(route.board);
       case 'profile':
@@ -352,12 +395,64 @@ export function createBbs(
       return system(check.missingEvidence);
     }
     if (answer !== check.answer.toLowerCase()) return system(check.incorrect);
+    return readCheckResponse(check.responseMessageId);
+  }
 
-    const response = offer.bulletins.get(check.responseMessageId);
+  function readCheckResponse(messageId: string): DispatchResult {
+    const response = offer.bulletins.get(messageId);
     if (!response) return system(text.invalid, screen().hint);
     const result = { output: [messageOutput(response)] };
     if (snapshot().bbsReadMessages.includes(response.key)) return result;
     return withHistory(result, { kind: 'read', id: response.key }, { readKeys: [response.key] });
+  }
+
+  function checkOrder(
+    check: OrderCheck,
+    { board, draft }: Extract<Route, { phase: 'board' }>,
+    action: OrderVerb,
+    args: string[],
+  ): DispatchResult {
+    const current = facts();
+    const missing = missingOrderEvidence(check, current);
+    if (missing) return system(missing);
+    if (!evaluate(board.requires, current)) return system(text.invalid, screen().hint);
+
+    if (action === 'APPLY') {
+      const order = args.length
+        ? args
+            .join(' ')
+            .split('/')
+            .map((token) => token.trim().toUpperCase())
+        : draft;
+      const operations = new Map(check.operations.map((operation) => [operation.token, operation]));
+      if (
+        order.length !== operations.size ||
+        new Set(order).size !== order.length ||
+        order.some((token) => !operations.has(token))
+      ) {
+        return system(check.invalidOrder);
+      }
+      const misplaced = order.find((token, index) => token !== check.operations[index]?.token);
+      if (misplaced) return system(operations.get(misplaced)!.outOfOrder);
+      draft.length = 0;
+      return readCheckResponse(check.responseMessageId);
+    }
+
+    if (action === 'CLEAR' && !args.length) {
+      draft.length = 0;
+    } else if (action === 'ORDER' && args.length === 1) {
+      const token = args[0]!.toUpperCase();
+      if (
+        !check.operations.some((operation) => operation.token === token) ||
+        draft.includes(token)
+      ) {
+        return system(text.invalid, screen().hint);
+      }
+      draft.push(token);
+    } else {
+      return system(text.invalid, screen().hint);
+    }
+    return system(`STAGED ORDER: ${draft.join(' / ') || 'EMPTY'}`);
   }
 
   function fromMenu(action: string): DispatchResult | undefined {
@@ -505,8 +600,8 @@ export function createBbs(
     if (phase === 'doors' && action === 'OPEN') {
       return id ? { output: [], opensDoor: id } : system(text.chooseDoor, screen().hint);
     }
-    if (phase === 'boards' && action === 'BOARD') {
-      const next = visibleBoards().find((entry) => entry.id === id);
+    if ((phase === 'boards' || phase === 'directory') && action === 'BOARD') {
+      const next = visibleBoards(phase).find((entry) => entry.id === id);
       if (next) {
         if (
           next.access &&
@@ -516,6 +611,13 @@ export function createBbs(
         }
         return withHistory(showBoard(next), { kind: 'board', id: next.id });
       }
+    }
+    if (
+      route.phase === 'board' &&
+      route.board.orderCheck &&
+      (action === 'ORDER' || action === 'CLEAR' || action === 'APPLY')
+    ) {
+      return checkOrder(route.board.orderCheck, route, action, args);
     }
     if (route.phase === 'board' || route.phase === 'thread') {
       const { check } = route.board;

@@ -20,6 +20,7 @@ import {
   archiveSchema,
   artifactSchema,
   bbsCheckVerbs,
+  bbsOrderVerbs,
   bbsPublicCommands,
   bbsSchema,
   capabilitySchema,
@@ -203,16 +204,16 @@ function checkBbsReferences(
   );
   const commands = new Map<string, Set<string>>();
   const responseClaims = new Map<string, number>();
-  for (const { check } of boards.values()) {
-    if (!check) continue;
-    const { responseMessageId: id } = check;
+  for (const { check, orderCheck } of boards.values()) {
+    const responseCheck = check ?? orderCheck;
+    if (!responseCheck) continue;
+    const { responseMessageId: id } = responseCheck;
     responseClaims.set(id, (responseClaims.get(id) ?? 0) + 1);
   }
 
   for (const entry of boards.values()) {
-    const { check } = entry;
-    if (!check) continue;
-    check.evidenceMessageIds.forEach((id, index) => {
+    const { check, orderCheck } = entry;
+    check?.evidenceMessageIds.forEach((id, index) => {
       const field = `check.evidenceMessageIds.${index}`;
       const post = messages.get(id);
       if (!post) {
@@ -226,8 +227,10 @@ function checkBbsReferences(
       }
     });
 
-    const field = 'check.responseMessageId';
-    const { responseMessageId: id } = check;
+    const responseCheck = check ?? orderCheck;
+    if (!responseCheck) continue;
+    const field = orderCheck ? 'orderCheck.responseMessageId' : 'check.responseMessageId';
+    const { responseMessageId: id } = responseCheck;
     const response = messages.get(id);
     if (!response?.eventOnly || response.board !== entry.bbs) {
       report(entry, field, 'response must be an event-only message on this endpoint');
@@ -305,7 +308,8 @@ function checkBbsReferences(
     }
     if (entry.kind === 'secret') {
       const tokens =
-        commands.get(entry.bbs) ?? new Set<string>([...bbsPublicCommands, ...bbsCheckVerbs]);
+        commands.get(entry.bbs) ??
+        new Set<string>([...bbsPublicCommands, ...bbsCheckVerbs, ...bbsOrderVerbs]);
       const token = entry.command.toUpperCase();
       if (tokens.has(token))
         report(entry, 'command', `reserved or duplicate BBS command "${token}"`);
@@ -727,6 +731,11 @@ function checkReferences(
     const { file } = sources.get(entry)!;
     if (entry.kind === 'board' || entry.kind === 'message-board') {
       checkCondition(entry.requires, entry, 'requires');
+    }
+    if (entry.kind === 'message-board') {
+      entry.orderCheck?.prerequisites.forEach(({ fact }, i) =>
+        checkFact(fact, entry, `orderCheck.prerequisites.${i}.fact`, false),
+      );
     }
     if (
       entry.kind === 'message-board' &&

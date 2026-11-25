@@ -1,0 +1,38 @@
+{
+  "kind": "message-board",
+  "id": "spool-02-recovery",
+  "bbs": "deep-field",
+  "directory": true,
+  "title": "RECOVERY CONSOLE",
+  "description": ["TARGET: RELAY 07 / SPOOL-02", "RESTORE WORKING SPOOL. RETAIN SEALED ORIGINALS."],
+  "requires": { "any": ["flag:deferred-verified", "flag:spool-02-order-learned"] },
+  "orderCheck": {
+    "prerequisites": [
+      {
+        "fact": "flag:deferred-verified",
+        "missingEvidence": "Q17 proof required. Verify the deferred release at either Q17 desk."
+      },
+      {
+        "fact": "flag:spool-02-order-learned",
+        "missingEvidence": "Training required. Learn the procedure at The Forgotten Archive shelf."
+      }
+    ],
+    "operations": [
+      {
+        "token": "SEAL",
+        "outOfOrder": "SEAL requires an untouched original. Review the training notebook and retry."
+      },
+      {
+        "token": "ROUTE",
+        "outOfOrder": "ROUTE needs a seal reference. Review the training notebook and retry."
+      },
+      {
+        "token": "ACK",
+        "outOfOrder": "ACK needs a destination receipt. Review the training notebook and retry."
+      }
+    ],
+    "prompt": "Apply the training shelf procedure. Select operations or type APPLY with the operations separated by /.",
+    "invalidOrder": "Enter each operation once, separated by /. Review the training notebook and retry.",
+    "responseMessageId": "spool-02-restoration-receipt"
+  }
+}

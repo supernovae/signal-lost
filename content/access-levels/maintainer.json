@@ -1,0 +1,6 @@
+{
+  "id": "maintainer",
+  "label": "MAINTAINER",
+  "rank": 2,
+  "when": "flag:spool-02-restored"
+}

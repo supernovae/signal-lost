@@ -1,0 +1,8 @@
+{
+  "id": "spool-02-restored",
+  "when": "bbs-read:spool-02-restoration-receipt",
+  "effects": [
+    { "kind": "grant-flag", "flag": "spool-02-restored" },
+    { "kind": "post-bulletin", "messageId": "spool-02-restoration-receipt" }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "kind": "message",
+  "id": "annex-queue-reader",
+  "board": "maintenance-annex",
+  "title": "QR-1 / queue-reader",
+  "from": "PACKET (retained)",
+  "date": "2001-03-01",
+  "body": [
+    "BEGIN queue-reader / QR-1",
+    "REQUIRES: SC-1. Admits only verified records.",
+    "END queue-reader / SEAL QR-1 VERIFIED",
+    "PACKET: Check the seal before the queue. Saves routing a bad copy twice."
+  ]
+}

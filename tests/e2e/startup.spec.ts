@@ -6,12 +6,16 @@ test('startup makes no failed or off-site requests, and logs no errors', async (
 }) => {
   const origin = new URL(baseURL!).origin;
   const problems: string[] = [];
+  const eagerRequests: string[] = [];
   page.on('requestfailed', (request) => problems.push(`failed: ${request.url()}`));
   page.on('response', (response) => {
     if (!response.ok()) problems.push(`${response.status()}: ${response.url()}`);
   });
   page.on('request', (request) => {
     const url = new URL(request.url());
+    if (/\/(connection-[^/]+\.js|content\/.*\.json|content-manifest\.json)$/.test(url.pathname)) {
+      eagerRequests.push(url.pathname);
+    }
     if (url.protocol.startsWith('http') && url.origin !== origin) {
       problems.push(`off-site: ${request.url()}`);
     }
@@ -27,4 +31,5 @@ test('startup makes no failed or off-site requests, and logs no errors', async (
   await expect(page.getByRole('log')).toContainText('OBSERVER NETWORK CLIENT');
   await page.waitForLoadState('networkidle');
   expect(problems).toEqual([]);
+  expect(eagerRequests).toEqual([]);
 });
